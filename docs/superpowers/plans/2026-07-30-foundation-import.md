@@ -6,7 +6,7 @@
 
 **Architecture:** 使用 Flutter + Material 3 作为界面基础，Riverpod 注入数据库、文件系统和导入服务。Drift 管理 SQLite；导入协调器把每个来源 URI 作为独立持久化任务处理，依次执行空间预检、临时复制、SHA-256 校验、重复检测、元数据/缩略图提取、原子移动和事务写库。平台插件封装在窄接口之后，使核心状态机可以在纯 Dart/Flutter 测试中验证。
 
-**Tech Stack:** Flutter stable（执行时安装的当前稳定版，需满足 Dart >= 3.10）、Material 3、flutter_riverpod 3.4.1、drift 2.34.3、drift_flutter 0.3.1、image_picker 1.2.3、video_thumbnail 0.5.6、crypto、path、path_provider、uuid、build_runner、drift_dev、flutter_test。
+**Tech Stack:** Flutter stable（执行时安装的当前稳定版，需满足 Dart >= 3.10）、Material 3、flutter_riverpod 3.4.1、drift 2.34.3、drift_flutter 0.3.1、image_picker 1.2.3、Android `MediaMetadataRetriever` MethodChannel、crypto、path、path_provider、uuid、build_runner、drift_dev、flutter_test。
 
 ## Global Constraints
 
@@ -113,7 +113,7 @@ Expected: Flutter stable 可运行，Dart >= 3.10，Android toolchain 和至少�
 
 ```powershell
 flutter create --platforms android --org com.dancediary --project-name dance_video_diary .
-flutter pub add flutter_riverpod:3.4.1 drift:2.34.3 drift_flutter:0.3.1 image_picker:1.2.3 video_thumbnail:0.5.6 crypto path path_provider uuid
+flutter pub add flutter_riverpod:3.4.1 drift:2.34.3 drift_flutter:0.3.1 image_picker:1.2.3 crypto path path_provider uuid
 flutter pub add --dev build_runner drift_dev
 ```
 
@@ -572,9 +572,11 @@ git commit -m "feat: add private media storage services"
 - Create: `lib/features/import/application/video_picker_gateway.dart`
 - Create: `lib/core/media/media_inspector.dart`
 - Create: `lib/core/media/thumbnail_service.dart`
+- Create: `android/app/src/main/kotlin/com/dancediary/app/media/MediaBridge.kt`
 - Create: `test/features/import/video_picker_gateway_test.dart`
 - Create: `test/core/media/media_inspector_test.dart`
 - Create: `test/core/media/thumbnail_service_test.dart`
+- Create: `android/app/src/test/kotlin/com/dancediary/app/media/MediaBridgeTest.kt`
 
 **Interfaces:**
 - Produces: `abstract interface class VideoPickerGateway { Future<List<ImportSource>> pickVideos(); }`
@@ -617,7 +619,7 @@ Expected: FAIL，因为 gateway 尚不存在。
 
 - [ ] **Step 4: 实现适配器并验证**
 
-`video_thumbnail` 调用只存在于 `ThumbnailService` 的 Android 实现中。元数据提取若 `image_picker` 不提供时长/宽高/拍摄时间，新增最小 Android MethodChannel，使用 `MediaMetadataRetriever`，并为 channel handler 写 Android 单元测试。
+使用一个窄 Android MethodChannel 封装 `MediaMetadataRetriever`：同一原生桥接负责读取时长、宽高、拍摄时间，并从本地视频提取指定时间点帧、按最长边 512 px 等比缩放后编码为 JPEG。`MediaInspector` 与 `ThumbnailService` 只依赖该桥接接口，并为 channel handler 写 Android 单元测试；原生异常映射为稳定错误类型，不把 Android API 泄漏到领域层。
 
 Run:
 
