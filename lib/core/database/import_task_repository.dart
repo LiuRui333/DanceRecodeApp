@@ -48,25 +48,35 @@ final class ImportTaskRepository {
       );
     }
 
-    await (_database.update(
-      _database.importTasks,
-    )..where((row) => row.id.equals(taskId))).write(
-      ImportTasksCompanion(
-        status: Value(next.name),
-        progress: progress == null ? const Value.absent() : Value(progress),
-        errorKind: errorKind == null
-            ? const Value.absent()
-            : Value(errorKind.name),
-        errorMessage: errorMessage == null
-            ? const Value.absent()
-            : Value(errorMessage),
-        videoId: videoId == null ? const Value.absent() : Value(videoId),
-        tempRelativePath: tempRelativePath == null
-            ? const Value.absent()
-            : Value(tempRelativePath),
-        updatedAt: Value(DateTime.now().toUtc()),
-      ),
-    );
+    final changed =
+        await (_database.update(_database.importTasks)..where(
+              (row) =>
+                  row.id.equals(taskId) & row.status.equals(current.status),
+            ))
+            .write(
+              ImportTasksCompanion(
+                status: Value(next.name),
+                progress: progress == null
+                    ? const Value.absent()
+                    : Value(progress),
+                errorKind: errorKind == null
+                    ? const Value.absent()
+                    : Value(errorKind.name),
+                errorMessage: errorMessage == null
+                    ? const Value.absent()
+                    : Value(errorMessage),
+                videoId: videoId == null
+                    ? const Value.absent()
+                    : Value(videoId),
+                tempRelativePath: tempRelativePath == null
+                    ? const Value.absent()
+                    : Value(tempRelativePath),
+                updatedAt: Value(DateTime.now().toUtc()),
+              ),
+            );
+    if (changed != 1) {
+      throw StateError('Import task changed before transition: $taskId');
+    }
 
     return (_database.select(
       _database.importTasks,

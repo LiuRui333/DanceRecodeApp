@@ -41,6 +41,34 @@ class PracticeVideos extends Table {
   @override
   List<String> get customConstraints => const [
     'CHECK (energy_rating IS NULL OR energy_rating BETWEEN 1 AND 5)',
+    r'''CHECK (
+      relative_path NOT LIKE '/%'
+      AND relative_path NOT LIKE '\%'
+      AND NOT (
+        length(relative_path) >= 3
+        AND substr(relative_path, 2, 1) = ':'
+        AND substr(relative_path, 3, 1) IN ('/', '\')
+      )
+      AND replace(relative_path, '\', '/') <> '..'
+      AND replace(relative_path, '\', '/') NOT GLOB '../*'
+      AND replace(relative_path, '\', '/') NOT GLOB '*/../*'
+      AND replace(relative_path, '\', '/') NOT GLOB '*/..'
+    )''',
+    r'''CHECK (
+      thumbnail_path IS NULL OR (
+        thumbnail_path NOT LIKE '/%'
+        AND thumbnail_path NOT LIKE '\%'
+        AND NOT (
+          length(thumbnail_path) >= 3
+          AND substr(thumbnail_path, 2, 1) = ':'
+          AND substr(thumbnail_path, 3, 1) IN ('/', '\')
+        )
+        AND replace(thumbnail_path, '\', '/') <> '..'
+        AND replace(thumbnail_path, '\', '/') NOT GLOB '../*'
+        AND replace(thumbnail_path, '\', '/') NOT GLOB '*/../*'
+        AND replace(thumbnail_path, '\', '/') NOT GLOB '*/..'
+      )
+    )''',
   ];
 }
 
@@ -101,4 +129,23 @@ class ImportTasks extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+
+  @override
+  List<String> get customConstraints => const [
+    r'''CHECK (
+      temp_relative_path IS NULL OR (
+        temp_relative_path NOT LIKE '/%'
+        AND temp_relative_path NOT LIKE '\%'
+        AND NOT (
+          length(temp_relative_path) >= 3
+          AND substr(temp_relative_path, 2, 1) = ':'
+          AND substr(temp_relative_path, 3, 1) IN ('/', '\')
+        )
+        AND replace(temp_relative_path, '\', '/') <> '..'
+        AND replace(temp_relative_path, '\', '/') NOT GLOB '../*'
+        AND replace(temp_relative_path, '\', '/') NOT GLOB '*/../*'
+        AND replace(temp_relative_path, '\', '/') NOT GLOB '*/..'
+      )
+    )''',
+  ];
 }

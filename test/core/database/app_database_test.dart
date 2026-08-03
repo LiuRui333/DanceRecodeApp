@@ -89,6 +89,58 @@ void main() {
     });
 
     test(
+      'rejects absolute and parent-traversal paths in persisted path fields',
+      () async {
+        const invalidPaths = <String>[
+          '/media/videos/v1.mp4',
+          r'C:\media\videos\v1.mp4',
+          'C:/media/videos/v1.mp4',
+          r'\\server\share\v1.mp4',
+          'media/../videos/v1.mp4',
+          r'media\..\videos\v1.mp4',
+        ];
+        final timestamp = DateTime(2026, 8, 3, 12).toUtc();
+
+        for (var index = 0; index < invalidPaths.length; index++) {
+          final path = invalidPaths[index];
+          await expectLater(
+            db
+                .into(db.practiceVideos)
+                .insert(_video(id: 'relative-$index', path: path)),
+            throwsA(isA<SqliteException>()),
+          );
+          await expectLater(
+            db
+                .into(db.practiceVideos)
+                .insert(
+                  _video(
+                    id: 'thumbnail-$index',
+                    path: 'media/videos/thumbnail-$index.mp4',
+                  ).copyWith(thumbnailPath: Value(path)),
+                ),
+            throwsA(isA<SqliteException>()),
+          );
+          await expectLater(
+            db
+                .into(db.importTasks)
+                .insert(
+                  ImportTasksCompanion.insert(
+                    id: 'task-$index',
+                    sourceUri: 'content://media/external/video/$index',
+                    displayName: '$index.mp4',
+                    tempRelativePath: Value(path),
+                    status: 'pending',
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                  ),
+                ),
+            throwsA(isA<SqliteException>()),
+          );
+        }
+      },
+    );
+
+    test(
       'deleting a tag removes associations without deleting its video',
       () async {
         await db
