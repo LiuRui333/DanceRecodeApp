@@ -60,6 +60,8 @@ final class MethodChannelMediaBridge implements MediaBridge {
       return await _invokeMethod(method, arguments);
     } on PlatformException {
       throw const MediaBridgeException(MediaBridgeFailureCode.nativeFailure);
+    } on MissingPluginException {
+      throw const MediaBridgeException(MediaBridgeFailureCode.nativeFailure);
     }
   }
 }

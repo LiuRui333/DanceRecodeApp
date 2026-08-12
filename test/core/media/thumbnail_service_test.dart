@@ -102,4 +102,20 @@ void main() {
       isNull,
     );
   });
+
+  test('a missing native plugin returns null', () async {
+    final service = MethodChannelThumbnailService(
+      bridge: MethodChannelMediaBridge(
+        invokeMethod: (_, _) async => throw MissingPluginException(),
+      ),
+    );
+
+    expect(
+      await service.generate(
+        videoAbsolutePath: 'D:\\media\\video.mp4',
+        outputAbsolutePath: 'D:\\thumbs\\video.jpg',
+      ),
+      isNull,
+    );
+  });
 }

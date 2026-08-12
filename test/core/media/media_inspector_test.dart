@@ -116,4 +116,23 @@ void main() {
       ),
     );
   });
+
+  test('missing native plugin becomes a stable inspection error', () async {
+    final inspector = MethodChannelMediaInspector(
+      bridge: MethodChannelMediaBridge(
+        invokeMethod: (_, _) async => throw MissingPluginException(),
+      ),
+    );
+
+    await expectLater(
+      inspector.inspect('D:\\media\\unavailable.mp4'),
+      throwsA(
+        isA<MediaInspectionException>().having(
+          (error) => error.code,
+          'code',
+          MediaInspectionFailureCode.nativeFailure,
+        ),
+      ),
+    );
+  });
 }
