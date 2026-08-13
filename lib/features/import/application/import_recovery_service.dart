@@ -19,6 +19,7 @@ final class RecoverySummary {
     required this.completed,
     required this.failed,
     required this.orphanDirectoriesDeleted,
+    required this.entries,
   });
 
   final int requeued;
@@ -26,6 +27,7 @@ final class RecoverySummary {
   final int completed;
   final int failed;
   final int orphanDirectoriesDeleted;
+  final List<ImportResultEntry> entries;
 }
 
 final class ImportRecoveryService {
@@ -50,6 +52,7 @@ final class ImportRecoveryService {
     var resumed = 0;
     var completed = 0;
     var failed = 0;
+    final entries = <ImportResultEntry>[];
     for (final task in active) {
       if (task.videoId != null &&
           await _videos.findById(task.videoId!) != null) {
@@ -66,6 +69,13 @@ final class ImportRecoveryService {
           videoId: task.videoId,
         );
         completed++;
+        entries.add(
+          ImportResultEntry(
+            taskId: task.id,
+            displayName: task.displayName,
+            result: ImportItemResult.success(videoId: task.videoId!),
+          ),
+        );
         continue;
       }
       final temp = _tempFile(task.id);
@@ -76,6 +86,13 @@ final class ImportRecoveryService {
         } else {
           requeued++;
         }
+        entries.add(
+          ImportResultEntry(
+            taskId: task.id,
+            displayName: task.displayName,
+            result: result,
+          ),
+        );
       } else if (task.status == ImportStatus.copying.name) {
         if (await temp.exists()) await temp.parent.delete(recursive: true);
         await _tasks.transition(
@@ -90,6 +107,13 @@ final class ImportRecoveryService {
         } else {
           requeued++;
         }
+        entries.add(
+          ImportResultEntry(
+            taskId: task.id,
+            displayName: task.displayName,
+            result: result,
+          ),
+        );
       } else if ((await temp.exists() && await temp.length() > 0) ||
           task.videoId != null) {
         final result = await runner.resumeProcessing(task.id);
@@ -98,6 +122,13 @@ final class ImportRecoveryService {
         } else {
           resumed++;
         }
+        entries.add(
+          ImportResultEntry(
+            taskId: task.id,
+            displayName: task.displayName,
+            result: result,
+          ),
+        );
       } else {
         await _tasks.transition(
           task.id,
@@ -106,6 +137,16 @@ final class ImportRecoveryService {
           errorMessage: 'Interrupted import cannot continue.',
         );
         failed++;
+        entries.add(
+          ImportResultEntry(
+            taskId: task.id,
+            displayName: task.displayName,
+            result: ImportItemResult.failure(
+              errorKind: ImportErrorKind.interrupted,
+              message: 'Interrupted import cannot continue.',
+            ),
+          ),
+        );
       }
     }
     final deleted = await _deleteOldOrphans(
@@ -117,6 +158,7 @@ final class ImportRecoveryService {
       completed: completed,
       failed: failed,
       orphanDirectoriesDeleted: deleted,
+      entries: List.unmodifiable(entries),
     );
   }
 

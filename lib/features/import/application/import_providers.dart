@@ -24,18 +24,23 @@ abstract interface class ImportWorkflowBoundary {
 
   Future<ImportItemResult> retry(String taskId);
 
-  Future<void> restore();
+  Future<ImportProgress?> restore();
+
+  Future<void> close();
 }
 
-typedef OpenImportedRecord = Future<void> Function(String videoId);
+typedef ImportWorkflowBoundaryFactory = ImportWorkflowBoundary Function();
 
-final importWorkflowBoundaryProvider = Provider<ImportWorkflowBoundary>(
-  (ref) => _DefaultImportWorkflowBoundary(),
-);
+final importWorkflowBoundaryFactoryProvider =
+    Provider<ImportWorkflowBoundaryFactory>(
+      (ref) => _DefaultImportWorkflowBoundary.new,
+    );
 
-final openImportedRecordProvider = Provider<OpenImportedRecord>(
-  (ref) => (_) async {},
-);
+final importWorkflowBoundaryProvider = Provider<ImportWorkflowBoundary>((ref) {
+  final boundary = ref.read(importWorkflowBoundaryFactoryProvider)();
+  ref.onDispose(boundary.close);
+  return boundary;
+});
 
 final importControllerProvider =
     AsyncNotifierProvider<ImportController, ImportProgress?>(
@@ -93,7 +98,18 @@ final class ImportController extends AsyncNotifier<ImportProgress?> {
     }
   }
 
-  Future<void> restore() => ref.read(importWorkflowBoundaryProvider).restore();
+  Future<void> restore() async {
+    if (_running) return;
+    _running = true;
+    try {
+      final progress = await ref.read(importWorkflowBoundaryProvider).restore();
+      if (progress != null) state = AsyncData(progress);
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+    } finally {
+      _running = false;
+    }
+  }
 
   ImportProgress _completedProgress(
     List<ImportResultEntry> entries,
@@ -110,6 +126,7 @@ final class ImportController extends AsyncNotifier<ImportProgress?> {
 final class _DefaultImportWorkflowBoundary implements ImportWorkflowBoundary {
   final VideoPickerGateway _picker = ImagePickerVideoPickerGateway();
   Future<_ImportServices>? _services;
+  bool _closed = false;
 
   @override
   Future<List<ImportSource>> pickVideos() => _picker.pickVideos();
@@ -127,12 +144,38 @@ final class _DefaultImportWorkflowBoundary implements ImportWorkflowBoundary {
   }
 
   @override
-  Future<void> restore() async {
+  Future<ImportProgress?> restore() async {
     final services = await _loadServices();
-    await services.recovery.recoverInterrupted();
+    final summary = await services.recovery.recoverInterrupted();
+    if (summary.entries.isEmpty) return null;
+    return ImportProgress(
+      status: ImportStatus.completed,
+      total: summary.entries.length,
+      completed: summary.entries
+          .where((entry) => entry.result is ImportSuccess)
+          .length,
+      duplicate: summary.entries
+          .where((entry) => entry.result is ImportDuplicate)
+          .length,
+      failed: summary.entries
+          .where((entry) => entry.result is ImportFailure)
+          .length,
+      entries: summary.entries,
+    );
   }
 
-  Future<_ImportServices> _loadServices() => _services ??= _createServices();
+  Future<_ImportServices> _loadServices() {
+    if (_closed) return Future.error(StateError('Import workflow is closed'));
+    return _services ??= _createServices();
+  }
+
+  @override
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    final services = _services;
+    if (services != null) await (await services).close();
+  }
 
   Future<_ImportServices> _createServices() async {
     final paths = AppMediaPaths(await getApplicationSupportDirectory());
@@ -153,6 +196,7 @@ final class _DefaultImportWorkflowBoundary implements ImportWorkflowBoundary {
           mediaBridge.availableBytes(directory.path),
     );
     return _ImportServices(
+      database,
       coordinator,
       ImportRecoveryService(
         taskRepository: tasks,
@@ -166,8 +210,16 @@ final class _DefaultImportWorkflowBoundary implements ImportWorkflowBoundary {
 }
 
 final class _ImportServices {
-  const _ImportServices(this.coordinator, this.recovery);
+  _ImportServices(this.database, this.coordinator, this.recovery);
 
+  final AppDatabase database;
   final ImportCoordinator coordinator;
   final ImportRecoveryService recovery;
+  bool _closed = false;
+
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    await database.close();
+  }
 }

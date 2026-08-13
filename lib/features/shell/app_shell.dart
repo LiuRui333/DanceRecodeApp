@@ -60,7 +60,7 @@ class _AppShellState extends ConsumerState<AppShell>
       return ImportResultPage(
         progress: progress!,
         onRetry: ref.read(importControllerProvider.notifier).retry,
-        onOpenRecord: ref.read(openImportedRecordProvider),
+        onOpenRecord: _openRecord,
       );
     }
     if (state.isLoading || progress != null) {
@@ -75,4 +75,24 @@ class _AppShellState extends ConsumerState<AppShell>
       ),
     );
   }
+
+  Future<void> _openRecord(String videoId) {
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _RecordDetailPage(videoId: videoId),
+      ),
+    );
+  }
+}
+
+class _RecordDetailPage extends StatelessWidget {
+  const _RecordDetailPage({required this.videoId});
+
+  final String videoId;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('记录详情')),
+    body: Center(child: Text('记录 ID：$videoId')),
+  );
 }

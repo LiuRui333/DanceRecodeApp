@@ -13,15 +13,9 @@ void main() {
     tester,
   ) async {
     final boundary = _ResultBoundary();
-    String? openedVideoId;
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          importWorkflowBoundaryProvider.overrideWithValue(boundary),
-          openImportedRecordProvider.overrideWithValue(
-            (videoId) async => openedVideoId = videoId,
-          ),
-        ],
+        overrides: [importWorkflowBoundaryProvider.overrideWithValue(boundary)],
         child: const MaterialApp(home: AppShell()),
       ),
     );
@@ -39,8 +33,13 @@ void main() {
 
     await tester.ensureVisible(find.text('打开记录'));
     await tester.tap(find.text('打开记录'));
-    await tester.pump();
-    expect(openedVideoId, 'existing-video');
+    await tester.pumpAndSettle();
+    expect(find.text('记录详情'), findsOneWidget);
+    expect(find.text('记录 ID：existing-video'), findsOneWidget);
+    expect(find.byTooltip('Back'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('重试'));
     await tester.tap(find.text('重试'));
@@ -137,6 +136,9 @@ final class _ResultBoundary implements ImportWorkflowBoundary {
   final progress = StreamController<ImportProgress>();
   String? retriedTaskId;
 
+  @override
+  Future<void> close() async {}
+
   void complete() {
     final successes = entries
         .where((entry) => entry.result is ImportSuccess)
@@ -180,5 +182,5 @@ final class _ResultBoundary implements ImportWorkflowBoundary {
   }
 
   @override
-  Future<void> restore() async {}
+  Future<ImportProgress?> restore() async => null;
 }

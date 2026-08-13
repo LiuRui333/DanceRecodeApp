@@ -59,6 +59,9 @@ void main() {
     ).recoverInterrupted();
     expect(summary.resumed, 0);
     expect(summary.failed, 1);
+    expect(summary.entries.single.taskId, task.id);
+    expect(summary.entries.single.displayName, 'processing.mp4');
+    expect(summary.entries.single.result, isA<ImportFailure>());
   });
   test('existing checkpointed database video completes idempotently', () async {
     final root = await Directory.systemTemp.createTemp('recovery_done_');
@@ -93,6 +96,8 @@ void main() {
     expect(runner.resumed, isEmpty);
     expect((await tasks.getById(task.id))!.status, 'completed');
     expect(await db.select(db.practiceVideos).get(), hasLength(1));
+    expect(summary.entries.single.taskId, task.id);
+    expect(summary.entries.single.result, isA<ImportSuccess>());
   });
   test(
     'applies every interrupted task rule and removes only old orphans',
@@ -171,6 +176,17 @@ void main() {
       expect(summary.completed, 1);
       expect(summary.failed, 1);
       expect(summary.orphanDirectoriesDeleted, 1);
+      expect(summary.entries, hasLength(5));
+      expect(
+        summary.entries.map((entry) => entry.displayName),
+        containsAll(<String>[
+          'pending.mp4',
+          'copying.mp4',
+          'processing.mp4',
+          'done.mp4',
+          'broken.mp4',
+        ]),
+      );
     },
   );
 }
