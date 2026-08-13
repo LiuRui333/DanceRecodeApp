@@ -129,6 +129,25 @@ final class ImportTaskRepository {
     return getById(taskId).then((task) => task!);
   }
 
+  Future<ImportTask> clearProcessingCheckpoint(String taskId) async {
+    final changed =
+        await (_database.update(_database.importTasks)..where(
+              (row) =>
+                  row.id.equals(taskId) &
+                  row.status.equals(ImportStatus.processing.name),
+            ))
+            .write(
+              ImportTasksCompanion(
+                videoId: const Value(null),
+                updatedAt: Value(DateTime.now().toUtc()),
+              ),
+            );
+    if (changed != 1) {
+      throw StateError('Import task is not processing: $taskId');
+    }
+    return getById(taskId).then((task) => task!);
+  }
+
   bool _isLegalTransition(ImportStatus current, ImportStatus next) {
     return switch (current) {
       ImportStatus.pending =>

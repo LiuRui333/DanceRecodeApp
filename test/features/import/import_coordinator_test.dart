@@ -186,6 +186,28 @@ void main() {
   );
 
   test(
+    'thumbnail file is removed when generation writes then returns null',
+    () async {
+      final harness = await _Harness.create(
+        thumbnail: _Thumbnail(returnNullAfterWrite: true),
+      );
+      addTearDown(harness.dispose);
+
+      await harness.coordinator.import(<ImportSource>[
+        harness.source('dance.mp4', <int>[1]),
+      ]).drain<void>();
+
+      expect(await harness.paths.thumbnailsDirectory.list().toList(), isEmpty);
+      expect(
+        (await harness.db.select(harness.db.practiceVideos).get())
+            .single
+            .thumbnailPath,
+        isNull,
+      );
+    },
+  );
+
+  test(
     'requires source size plus the minimum reserve before copying',
     () async {
       final harness = await _Harness.create(availableBytes: 64 * 1024 * 1024);
@@ -365,6 +387,94 @@ void main() {
     },
   );
 
+  test(
+    'failed database recovery removes final media and permits a clean retry',
+    () async {
+      const videoId = 'checkpointed-video';
+      final harness = await _Harness.create(
+        videoIdGenerator: () => 'retry-video',
+      );
+      addTearDown(harness.dispose);
+      final source = harness.source('resume.mp4', <int>[7, 8]);
+      final task = await harness.tasks.createPending(source);
+      await harness.tasks.transition(
+        task.id,
+        ImportStatus.copying,
+        tempRelativePath: harness.paths.importTempRelativePath(task.id),
+      );
+      await harness.tasks.transition(
+        task.id,
+        ImportStatus.processing,
+        tempSizeBytes: 2,
+        videoId: videoId,
+      );
+      final finalFile = File(
+        '${harness.paths.videosDirectory.path}${Platform.pathSeparator}$videoId.mp4',
+      );
+      await finalFile.create(recursive: true);
+      await finalFile.writeAsBytes(<int>[7, 8]);
+      await harness.db.customStatement(
+        'CREATE TRIGGER reject_recovered_video BEFORE INSERT ON practice_videos BEGIN SELECT RAISE(ABORT, \'reject\'); END',
+      );
+
+      final failed = await harness.coordinator.resumeProcessing(task.id);
+
+      expect(failed, isA<ImportFailure>());
+      expect(await finalFile.exists(), isFalse);
+      expect((await harness.tasks.getById(task.id))!.videoId, isNull);
+      await harness.db.customStatement('DROP TRIGGER reject_recovered_video');
+      final retried = await harness.coordinator.retry(task.id);
+      expect(retried, isA<ImportSuccess>());
+      expect((retried as ImportSuccess).videoId, 'retry-video');
+    },
+  );
+
+  test('resumeProcessing ignores an untrusted persisted temp path', () async {
+    final inspector = _Inspector();
+    final harness = await _Harness.create(inspector: inspector);
+    addTearDown(harness.dispose);
+    final victim = File(
+      '${harness.paths.videosDirectory.path}${Platform.pathSeparator}victim.mp4',
+    );
+    await victim.create(recursive: true);
+    await victim.writeAsBytes(<int>[9]);
+    final task = await harness.tasks.createPending(
+      harness.source('malicious.mp4', <int>[9]),
+    );
+    await harness.tasks.transition(
+      task.id,
+      ImportStatus.copying,
+      tempRelativePath: 'media/videos/victim.mp4',
+    );
+    await harness.tasks.transition(
+      task.id,
+      ImportStatus.processing,
+      tempSizeBytes: 1,
+    );
+
+    final result = await harness.coordinator.resumeProcessing(task.id);
+
+    expect(result, isA<ImportFailure>());
+    expect(await victim.readAsBytes(), <int>[9]);
+    expect(inspector.calls, 0);
+  });
+
+  test('file source opener maps a missing file to sourceUnavailable', () async {
+    final harness = await _Harness.create(openSource: openFileSource);
+    addTearDown(harness.dispose);
+    final missing = ImportSource(
+      uri: '${harness.root.path}${Platform.pathSeparator}missing.mp4',
+      displayName: 'missing.mp4',
+      sizeBytes: 1,
+      modifiedAt: DateTime.utc(2026),
+    );
+
+    await harness.coordinator.import(<ImportSource>[missing]).drain<void>();
+
+    final task = (await harness.db.select(harness.db.importTasks).get()).single;
+    expect(task.errorKind, ImportErrorKind.sourceUnavailable.name);
+  });
+
   test('same filename with different hash imports independently', () async {
     final harness = await _Harness.create();
     addTearDown(harness.dispose);
@@ -396,6 +506,7 @@ final class _Harness {
     int Function()? availableBytesReader,
     int unknownSizeCapBytes = 4 * 1024 * 1024 * 1024,
     String Function()? videoIdGenerator,
+    SourceOpener? openSource,
   }) async {
     final root = await Directory.systemTemp.createTemp('coordinator_test_');
     final paths = AppMediaPaths(root);
@@ -410,13 +521,17 @@ final class _Harness {
       hashService: HashService(),
       mediaInspector: inspector ?? _Inspector(),
       thumbnailService: thumbnail ?? _Thumbnail(),
-      openSource: (uri) {
-        final sourceBytes = bytes[uri];
-        if (sourceBytes == null) {
-          return Stream<List<int>>.error(const SourceUnavailableException());
-        }
-        return Stream<List<int>>.value(sourceBytes);
-      },
+      openSource:
+          openSource ??
+          (uri) {
+            final sourceBytes = bytes[uri];
+            if (sourceBytes == null) {
+              return Stream<List<int>>.error(
+                const SourceUnavailableException(),
+              );
+            }
+            return Stream<List<int>>.value(sourceBytes);
+          },
       availableBytes: (_) async =>
           availableBytesReader?.call() ?? availableBytes,
       unknownSizeCapBytes: unknownSizeCapBytes,
@@ -473,10 +588,15 @@ final class _Inspector implements MediaInspector {
 }
 
 final class _Thumbnail implements ThumbnailService {
-  _Thumbnail({this.fail = false, this.failAfterWrite = false});
+  _Thumbnail({
+    this.fail = false,
+    this.failAfterWrite = false,
+    this.returnNullAfterWrite = false,
+  });
 
   final bool fail;
   final bool failAfterWrite;
+  final bool returnNullAfterWrite;
   int calls = 0;
 
   @override
@@ -489,6 +609,7 @@ final class _Thumbnail implements ThumbnailService {
     if (fail) throw StateError('thumbnail failed');
     await File(outputAbsolutePath).create(recursive: true);
     if (failAfterWrite) throw StateError('thumbnail failed after write');
+    if (returnNullAfterWrite) return null;
     return outputAbsolutePath;
   }
 }

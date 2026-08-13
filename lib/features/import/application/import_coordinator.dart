@@ -22,6 +22,16 @@ final class SourceUnavailableException implements Exception {
   const SourceUnavailableException();
 }
 
+Stream<List<int>> openFileSource(String filePath) async* {
+  try {
+    await for (final chunk in File(filePath).openRead()) {
+      yield chunk;
+    }
+  } on FileSystemException {
+    throw const SourceUnavailableException();
+  }
+}
+
 final class ImportCoordinator implements ImportRecoveryRunner {
   ImportCoordinator({
     required ImportTaskRepository taskRepository,
@@ -119,9 +129,7 @@ final class ImportCoordinator implements ImportRecoveryRunner {
         message: 'Import task cannot be resumed.',
       );
     }
-    final temp = File(
-      _absolute(task.tempRelativePath ?? paths.importTempRelativePath(taskId)),
-    );
+    final temp = File(_absolute(paths.importTempRelativePath(taskId)));
     if (await temp.exists()) {
       final length = await temp.length();
       final expected = task.sourceSizeBytes >= 0
@@ -262,7 +270,11 @@ final class ImportCoordinator implements ImportRecoveryRunner {
           videoAbsolutePath: mediaFile.path,
           outputAbsolutePath: thumbnailFile.path,
         );
-        if (generated != null) storedThumbnailPath = thumbnailRelativePath;
+        if (generated != null) {
+          storedThumbnailPath = thumbnailRelativePath;
+        } else {
+          await _deleteIfExists(thumbnailFile);
+        }
       } catch (_) {
         await _deleteIfExists(thumbnailFile);
         storedThumbnailPath = null;
@@ -297,9 +309,10 @@ final class ImportCoordinator implements ImportRecoveryRunner {
           ),
         );
       } catch (_) {
-        if (!alreadyFinal) await _deleteIfExists(destination);
+        await _deleteIfExists(destination);
         await _deleteIfExists(thumbnailFile);
         if (!alreadyFinal) await _deleteTaskTemp(mediaFile);
+        await _tasks.clearProcessingCheckpoint(taskId);
         return _fail(
           taskId,
           ImportErrorKind.database,
