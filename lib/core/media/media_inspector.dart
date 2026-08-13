@@ -11,6 +11,8 @@ abstract interface class MediaBridge {
     required String outputAbsolutePath,
     required int maxWidth,
   });
+
+  Future<int> availableBytes(String absolutePath);
 }
 
 enum MediaBridgeFailureCode { nativeFailure }
@@ -53,6 +55,17 @@ final class MethodChannelMediaBridge implements MediaBridge {
       'outputAbsolutePath': outputAbsolutePath,
       'maxWidth': maxWidth,
     });
+  }
+
+  @override
+  Future<int> availableBytes(String absolutePath) async {
+    final response = await _invoke('availableBytes', {
+      'absolutePath': absolutePath,
+    });
+    if (response is! int || response < 0) {
+      throw const MediaBridgeException(MediaBridgeFailureCode.nativeFailure);
+    }
+    return response;
   }
 
   Future<Object?> _invoke(String method, Map<String, Object?> arguments) async {

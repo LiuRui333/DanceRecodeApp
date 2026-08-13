@@ -135,4 +135,44 @@ void main() {
       ),
     );
   });
+
+  test(
+    'available bytes forwards the absolute path and accepts an integer',
+    () async {
+      String? method;
+      Map<String, Object?>? arguments;
+      final bridge = MethodChannelMediaBridge(
+        invokeMethod: (name, values) async {
+          method = name;
+          arguments = values;
+          return 123456789;
+        },
+      );
+
+      final bytes = await bridge.availableBytes('D:\\private');
+
+      expect(method, 'availableBytes');
+      expect(arguments, {'absolutePath': 'D:\\private'});
+      expect(bytes, 123456789);
+    },
+  );
+
+  test('available bytes rejects malformed and platform responses', () async {
+    final malformed = MethodChannelMediaBridge(
+      invokeMethod: (_, _) async => 'many',
+    );
+    final failed = MethodChannelMediaBridge(
+      invokeMethod: (_, _) async =>
+          throw PlatformException(code: 'storage_failed'),
+    );
+
+    await expectLater(
+      malformed.availableBytes('D:\\private'),
+      throwsA(isA<MediaBridgeException>()),
+    );
+    await expectLater(
+      failed.availableBytes('D:\\private'),
+      throwsA(isA<MediaBridgeException>()),
+    );
+  });
 }

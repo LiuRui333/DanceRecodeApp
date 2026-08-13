@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
+import android.os.StatFs
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -33,6 +34,8 @@ internal interface MediaBackend {
         outputAbsolutePath: String,
         maxWidth: Int,
     ): String
+
+    fun availableBytes(absolutePath: String): Long
 }
 
 internal class MediaBridgeHandler(
@@ -44,7 +47,25 @@ internal class MediaBridgeHandler(
         when (call.method) {
             "inspectVideo" -> inspectVideo(call, result)
             "generateThumbnail" -> generateThumbnail(call, result)
+            "availableBytes" -> availableBytes(call, result)
             else -> resultDispatcher { result.notImplemented() }
+        }
+    }
+
+    private fun availableBytes(call: MethodCall, result: MethodChannel.Result) {
+        val arguments = call.arguments as? Map<*, *>
+        val absolutePath = arguments?.get("absolutePath") as? String
+        if (absolutePath == null || !isAbsolutePath(absolutePath)) {
+            invalidArguments(result)
+            return
+        }
+        workerDispatcher {
+            try {
+                val bytes = backend.availableBytes(absolutePath)
+                resultDispatcher { result.success(bytes) }
+            } catch (_: Exception) {
+                resultDispatcher { result.error("storage_query_failed", null, null) }
+            }
         }
     }
 
@@ -122,6 +143,9 @@ internal class MediaBridgeHandler(
 }
 
 internal class AndroidMediaBackend : MediaBackend {
+    override fun availableBytes(absolutePath: String): Long =
+        StatFs(absolutePath).availableBytes
+
     override fun inspect(absolutePath: String): MediaInfo {
         val retriever = MediaMetadataRetriever()
         try {

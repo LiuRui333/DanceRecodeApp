@@ -86,6 +86,32 @@ void main() {
     expect(progress.last.failed, 1);
   });
 
+  test('reports the current filename then appends each item result', () async {
+    final harness = await _Harness.create();
+    addTearDown(harness.dispose);
+
+    final progress = await harness.coordinator.import(<ImportSource>[
+      harness.source('first.mp4', <int>[1]),
+      harness.source('second.mp4', <int>[2]),
+    ]).toList();
+
+    expect(progress, hasLength(5));
+    expect(progress[1].currentFileName, 'first.mp4');
+    expect(progress[1].entries, isEmpty);
+    expect(progress[2].entries.single.displayName, 'first.mp4');
+    expect(progress[3].currentFileName, 'second.mp4');
+    expect(progress[3].entries, hasLength(1));
+    expect(progress.last.currentFileName, isNull);
+    expect(progress.last.entries.map((entry) => entry.displayName), <String>[
+      'first.mp4',
+      'second.mp4',
+    ]);
+    expect(
+      progress.last.entries.map((entry) => entry.taskId),
+      everyElement(isNotEmpty),
+    );
+  });
+
   test('thumbnail failure does not fail the import', () async {
     final harness = await _Harness.create(thumbnail: _Thumbnail(fail: true));
     addTearDown(harness.dispose);

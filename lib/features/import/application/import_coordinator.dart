@@ -69,9 +69,19 @@ final class ImportCoordinator implements ImportRecoveryRunner {
     var completed = 0;
     var duplicate = 0;
     var failed = 0;
+    final entries = <ImportResultEntry>[];
     yield ImportProgress(status: ImportStatus.pending, total: sources.length);
     for (final source in sources) {
       final task = await _tasks.createPending(source);
+      yield ImportProgress(
+        status: ImportStatus.processing,
+        total: sources.length,
+        completed: completed,
+        duplicate: duplicate,
+        failed: failed,
+        currentFileName: source.displayName,
+        entries: entries,
+      );
       final result = await _run(task.id, source);
       switch (result) {
         case ImportSuccess():
@@ -81,6 +91,13 @@ final class ImportCoordinator implements ImportRecoveryRunner {
         case ImportFailure():
           failed++;
       }
+      entries.add(
+        ImportResultEntry(
+          taskId: task.id,
+          displayName: source.displayName,
+          result: result,
+        ),
+      );
       yield ImportProgress(
         status: completed + duplicate + failed == sources.length
             ? ImportStatus.completed
@@ -89,6 +106,7 @@ final class ImportCoordinator implements ImportRecoveryRunner {
         completed: completed,
         duplicate: duplicate,
         failed: failed,
+        entries: entries,
       );
     }
   }

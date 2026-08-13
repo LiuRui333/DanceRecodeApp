@@ -153,4 +153,66 @@ void main() {
     expect(progress.completed + progress.duplicate + progress.failed, 4);
     expect(progress.total, 5);
   });
+
+  test('progress entries preserve task identity and cannot be mutated', () {
+    final entries = <ImportResultEntry>[
+      ImportResultEntry(
+        taskId: 'task-1',
+        displayName: 'practice.mp4',
+        result: ImportItemResult.success(videoId: 'video-1'),
+      ),
+    ];
+    final progress = ImportProgress(
+      status: ImportStatus.completed,
+      total: 1,
+      completed: 1,
+      entries: entries,
+    );
+
+    entries.clear();
+
+    expect(progress.entries, hasLength(1));
+    expect(progress.entries.single.taskId, 'task-1');
+    expect(progress.entries.single.displayName, 'practice.mp4');
+    expect(() => progress.entries.clear(), throwsUnsupportedError);
+  });
+
+  test('result entries reject blank task identifiers and display names', () {
+    final result = ImportItemResult.success(videoId: 'video-1');
+
+    expect(
+      () => ImportResultEntry(
+        taskId: ' ',
+        displayName: 'practice.mp4',
+        result: result,
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () =>
+          ImportResultEntry(taskId: 'task-1', displayName: ' ', result: result),
+      throwsArgumentError,
+    );
+  });
+
+  test('progress rejects entries whose outcomes disagree with counts', () {
+    expect(
+      () => ImportProgress(
+        status: ImportStatus.completed,
+        total: 1,
+        completed: 1,
+        entries: [
+          ImportResultEntry(
+            taskId: 'task-1',
+            displayName: 'practice.mp4',
+            result: ImportItemResult.failure(
+              errorKind: ImportErrorKind.io,
+              message: 'failed',
+            ),
+          ),
+        ],
+      ),
+      throwsArgumentError,
+    );
+  });
 }

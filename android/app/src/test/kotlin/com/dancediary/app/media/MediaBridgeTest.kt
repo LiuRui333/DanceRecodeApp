@@ -157,6 +157,40 @@ class MediaBridgeTest {
         assertTrue(result.notImplemented)
     }
 
+    @Test
+    fun availableBytesForwardsAbsolutePathAndReturnsBackendValue() {
+        val backend = FakeMediaBackend()
+        val result = RecordingResult()
+
+        directHandler(backend).onMethodCall(
+            MethodCall("availableBytes", mapOf("absolutePath" to "/data/user/0/app")),
+            result,
+        )
+
+        assertEquals("/data/user/0/app", backend.availableBytesPath)
+        assertEquals(9_876L, result.successValue)
+    }
+
+    @Test
+    fun availableBytesRejectsRelativePathAndMapsBackendFailure() {
+        val relativeBackend = FakeMediaBackend()
+        val relative = RecordingResult()
+        directHandler(relativeBackend).onMethodCall(
+            MethodCall("availableBytes", mapOf("absolutePath" to "private")),
+            relative,
+        )
+        assertEquals("invalid_arguments", relative.errorCode)
+
+        val failed = RecordingResult()
+        directHandler(FakeMediaBackend(availableBytesFailure = IllegalStateException("disk detail")))
+            .onMethodCall(
+                MethodCall("availableBytes", mapOf("absolutePath" to "/data/private")),
+                failed,
+            )
+        assertEquals("storage_query_failed", failed.errorCode)
+        assertNull(failed.errorMessage)
+    }
+
     private fun directHandler(backend: MediaBackend): MediaBridgeHandler =
         MediaBridgeHandler(backend, { task -> task() }, { task -> task() })
 }
@@ -164,9 +198,11 @@ class MediaBridgeTest {
 private class FakeMediaBackend(
     private val inspectFailure: Throwable? = null,
     private val thumbnailFailure: Throwable? = null,
+    private val availableBytesFailure: Throwable? = null,
 ) : MediaBackend {
     var inspectedPath: String? = null
     var thumbnailRequest: ThumbnailRequest? = null
+    var availableBytesPath: String? = null
 
     override fun inspect(absolutePath: String): MediaInfo {
         inspectFailure?.let { throw it }
@@ -187,6 +223,12 @@ private class FakeMediaBackend(
         thumbnailFailure?.let { throw it }
         thumbnailRequest = ThumbnailRequest(videoAbsolutePath, outputAbsolutePath, maxWidth)
         return outputAbsolutePath
+    }
+
+    override fun availableBytes(absolutePath: String): Long {
+        availableBytesFailure?.let { throw it }
+        availableBytesPath = absolutePath
+        return 9_876L
     }
 }
 

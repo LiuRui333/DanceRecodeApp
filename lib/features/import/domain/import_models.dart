@@ -65,6 +65,40 @@ final class ImportFailure extends ImportItemResult {
   final String message;
 }
 
+final class ImportResultEntry {
+  factory ImportResultEntry({
+    required String taskId,
+    required String displayName,
+    required ImportItemResult result,
+  }) {
+    if (taskId.trim().isEmpty) {
+      throw ArgumentError.value(taskId, 'taskId', 'must not be blank');
+    }
+    if (displayName.trim().isEmpty) {
+      throw ArgumentError.value(
+        displayName,
+        'displayName',
+        'must not be blank',
+      );
+    }
+    return ImportResultEntry._(
+      taskId: taskId,
+      displayName: displayName,
+      result: result,
+    );
+  }
+
+  const ImportResultEntry._({
+    required this.taskId,
+    required this.displayName,
+    required this.result,
+  });
+
+  final String taskId;
+  final String displayName;
+  final ImportItemResult result;
+}
+
 final class ImportProgress {
   factory ImportProgress({
     required ImportStatus status,
@@ -72,6 +106,8 @@ final class ImportProgress {
     int completed = 0,
     int duplicate = 0,
     int failed = 0,
+    String? currentFileName,
+    List<ImportResultEntry> entries = const [],
   }) {
     if (total < 0) {
       throw ArgumentError.value(total, 'total', 'must not be negative');
@@ -90,6 +126,29 @@ final class ImportProgress {
         'completed, duplicate, and failed must not exceed total',
       );
     }
+    if (currentFileName != null && currentFileName.trim().isEmpty) {
+      throw ArgumentError.value(
+        currentFileName,
+        'currentFileName',
+        'must not be blank',
+      );
+    }
+    if (entries.isNotEmpty) {
+      final entryCompleted = entries
+          .where((entry) => entry.result is ImportSuccess)
+          .length;
+      final entryDuplicate = entries
+          .where((entry) => entry.result is ImportDuplicate)
+          .length;
+      final entryFailed = entries
+          .where((entry) => entry.result is ImportFailure)
+          .length;
+      if (entryCompleted != completed ||
+          entryDuplicate != duplicate ||
+          entryFailed != failed) {
+        throw ArgumentError('entries must agree with terminal counts');
+      }
+    }
 
     return ImportProgress._(
       status: status,
@@ -97,6 +156,8 @@ final class ImportProgress {
       completed: completed,
       duplicate: duplicate,
       failed: failed,
+      currentFileName: currentFileName,
+      entries: List.unmodifiable(entries),
     );
   }
 
@@ -106,6 +167,8 @@ final class ImportProgress {
     required this.completed,
     required this.duplicate,
     required this.failed,
+    required this.currentFileName,
+    required this.entries,
   });
 
   final ImportStatus status;
@@ -113,4 +176,6 @@ final class ImportProgress {
   final int completed;
   final int duplicate;
   final int failed;
+  final String? currentFileName;
+  final List<ImportResultEntry> entries;
 }
