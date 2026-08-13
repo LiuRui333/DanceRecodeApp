@@ -9,6 +9,12 @@ final class ImportTaskRepository {
 
   final AppDatabase _database;
 
+  Future<ImportTask?> getById(String taskId) {
+    return (_database.select(
+      _database.importTasks,
+    )..where((row) => row.id.equals(taskId))).getSingleOrNull();
+  }
+
   Future<ImportTask> createPending(ImportSource source) async {
     final now = DateTime.now().toUtc();
     final task = ImportTasksCompanion.insert(

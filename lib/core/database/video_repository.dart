@@ -11,6 +11,10 @@ final class ImportedVideoDraft {
     required this.recordedAt,
     this.metadataRecordedAt,
     required this.importedAt,
+    this.thumbnailPath,
+    this.durationMs,
+    this.width,
+    this.height,
     this.tagIds = const [],
   });
 
@@ -22,6 +26,10 @@ final class ImportedVideoDraft {
   final DateTime recordedAt;
   final DateTime? metadataRecordedAt;
   final DateTime importedAt;
+  final String? thumbnailPath;
+  final int? durationMs;
+  final int? width;
+  final int? height;
   final List<String> tagIds;
 }
 
@@ -29,6 +37,12 @@ final class VideoRepository {
   const VideoRepository(this._database);
 
   final AppDatabase _database;
+
+  Future<PracticeVideo?> findById(String videoId) {
+    return (_database.select(
+      _database.practiceVideos,
+    )..where((video) => video.id.equals(videoId))).getSingleOrNull();
+  }
 
   Future<PracticeVideo?> findDuplicate({
     required int sizeBytes,
@@ -51,11 +65,15 @@ final class VideoRepository {
               id: draft.id,
               relativePath: draft.relativePath,
               originalFileName: Value(draft.originalFileName),
+              thumbnailPath: Value(draft.thumbnailPath),
               fileHash: draft.sha256,
               fileSizeBytes: draft.sizeBytes,
               recordedAt: draft.recordedAt.toUtc(),
               metadataRecordedAt: Value(draft.metadataRecordedAt?.toUtc()),
               importedAt: draft.importedAt.toUtc(),
+              durationMs: Value(draft.durationMs),
+              width: Value(draft.width),
+              height: Value(draft.height),
               isFavorite: false,
               createdAt: draft.importedAt.toUtc(),
               updatedAt: draft.importedAt.toUtc(),
