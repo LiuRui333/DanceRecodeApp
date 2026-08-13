@@ -11,6 +11,89 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('recent empty orphan uses directory mtime and is retained', () async {
+    final root = await Directory.systemTemp.createTemp('recovery_empty_');
+    final paths = AppMediaPaths(root);
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await root.delete(recursive: true);
+    });
+    final orphan = Directory(
+      '${paths.importsTempDirectory.path}${Platform.pathSeparator}recent-empty',
+    );
+    await orphan.create(recursive: true);
+    final summary = await ImportRecoveryService(
+      taskRepository: ImportTaskRepository(db),
+      videoRepository: VideoRepository(db),
+      paths: paths,
+      runner: _Runner(failTaskId: ''),
+      now: () => DateTime.now(),
+    ).recoverInterrupted();
+    expect(await orphan.exists(), isTrue);
+    expect(summary.orphanDirectoriesDeleted, 0);
+  });
+  test('runner failure counts failed rather than resumed', () async {
+    final root = await Directory.systemTemp.createTemp('recovery_failed_');
+    final paths = AppMediaPaths(root);
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await root.delete(recursive: true);
+    });
+    final tasks = ImportTaskRepository(db);
+    final task = await tasks.createPending(_source('processing.mp4'));
+    await tasks.transition(
+      task.id,
+      ImportStatus.copying,
+      tempRelativePath: paths.importTempRelativePath(task.id),
+    );
+    await tasks.transition(task.id, ImportStatus.processing, tempSizeBytes: 1);
+    await _tempFile(paths, task.id, <int>[1]);
+    final summary = await ImportRecoveryService(
+      taskRepository: tasks,
+      videoRepository: VideoRepository(db),
+      paths: paths,
+      runner: _Runner(failTaskId: task.id),
+      now: () => DateTime.now(),
+    ).recoverInterrupted();
+    expect(summary.resumed, 0);
+    expect(summary.failed, 1);
+  });
+  test('existing checkpointed database video completes idempotently', () async {
+    final root = await Directory.systemTemp.createTemp('recovery_done_');
+    final paths = AppMediaPaths(root);
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await root.delete(recursive: true);
+    });
+    final tasks = ImportTaskRepository(db);
+    final videos = VideoRepository(db);
+    final task = await tasks.createPending(_source('done.mp4'));
+    await tasks.transition(task.id, ImportStatus.copying);
+    await tasks.transition(
+      task.id,
+      ImportStatus.processing,
+      videoId: 'existing',
+    );
+    await videos.insertImportedVideo(_draft('existing'));
+    final runner = _Runner(failTaskId: '');
+
+    final summary = await ImportRecoveryService(
+      taskRepository: tasks,
+      videoRepository: videos,
+      paths: paths,
+      runner: runner,
+      now: DateTime.now,
+    ).recoverInterrupted();
+
+    expect(summary.completed, 1);
+    expect(summary.failed, 0);
+    expect(runner.resumed, isEmpty);
+    expect((await tasks.getById(task.id))!.status, 'completed');
+    expect(await db.select(db.practiceVideos).get(), hasLength(1));
+  });
   test(
     'applies every interrupted task rule and removes only old orphans',
     () async {

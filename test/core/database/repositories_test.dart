@@ -59,6 +59,8 @@ void main() {
 
     test('permits the ordered completion transition path', () async {
       final pending = await tasks.createPending(_source('one.mp4'));
+      expect(pending.sourceSizeBytes, 10);
+      expect(pending.sourceModifiedAt, DateTime(2026, 8, 3, 12).toUtc());
       final copying = await tasks.transition(
         pending.id,
         ImportStatus.copying,
@@ -69,6 +71,8 @@ void main() {
         copying.id,
         ImportStatus.processing,
         progress: 0.75,
+        tempSizeBytes: 10,
+        videoId: 'reserved-v1',
       );
       final completed = await tasks.transition(
         processing.id,
@@ -80,6 +84,8 @@ void main() {
       expect(copying.status, 'copying');
       expect(copying.tempRelativePath, 'temp/imports/${pending.id}/one.mp4');
       expect(processing.status, 'processing');
+      expect(processing.tempSizeBytes, 10);
+      expect(processing.videoId, 'reserved-v1');
       expect(completed.status, 'completed');
       expect(completed.progress, 1);
       expect(completed.videoId, 'v1');

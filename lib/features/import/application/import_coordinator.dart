@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dance_video_diary/core/database/import_task_repository.dart';
+import 'package:dance_video_diary/core/database/app_database.dart';
 import 'package:dance_video_diary/core/database/video_repository.dart';
 import 'package:dance_video_diary/core/media/app_media_paths.dart';
 import 'package:dance_video_diary/core/media/file_gateway.dart';
@@ -10,13 +11,18 @@ import 'package:dance_video_diary/core/media/thumbnail_service.dart';
 import 'package:dance_video_diary/features/import/domain/import_models.dart';
 import 'package:dance_video_diary/features/import/domain/import_source.dart';
 import 'package:dance_video_diary/features/import/domain/recorded_at_resolver.dart';
+import 'package:dance_video_diary/features/import/application/import_recovery_service.dart';
 import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 
 typedef SourceOpener = Stream<List<int>> Function(String uri);
 typedef AvailableBytesReader = Future<int> Function(Directory directory);
 
-final class ImportCoordinator {
+final class SourceUnavailableException implements Exception {
+  const SourceUnavailableException();
+}
+
+final class ImportCoordinator implements ImportRecoveryRunner {
   ImportCoordinator({
     required ImportTaskRepository taskRepository,
     required VideoRepository videoRepository,
@@ -28,12 +34,14 @@ final class ImportCoordinator {
     required this.openSource,
     required this.availableBytes,
     this.unknownSizeCapBytes = 4 * 1024 * 1024 * 1024,
+    String Function()? videoIdGenerator,
   }) : _tasks = taskRepository,
        _videos = videoRepository,
        _files = fileGateway,
        _hashes = hashService,
        _inspector = mediaInspector,
-       _thumbnails = thumbnailService;
+       _thumbnails = thumbnailService,
+       _videoIdGenerator = videoIdGenerator ?? const Uuid().v4;
 
   final ImportTaskRepository _tasks;
   final VideoRepository _videos;
@@ -45,6 +53,7 @@ final class ImportCoordinator {
   final SourceOpener openSource;
   final AvailableBytesReader availableBytes;
   final int unknownSizeCapBytes;
+  final String Function() _videoIdGenerator;
 
   Stream<ImportProgress> import(List<ImportSource> sources) async* {
     var completed = 0;
@@ -83,14 +92,74 @@ final class ImportCoordinator {
       );
     }
     await _tasks.transition(taskId, ImportStatus.pending);
-    return _run(
+    return requeue(taskId);
+  }
+
+  @override
+  Future<ImportItemResult> requeue(String taskId) async {
+    var task = await _tasks.getById(taskId);
+    if (task?.status == ImportStatus.failed.name) {
+      task = await _tasks.transition(taskId, ImportStatus.pending);
+    }
+    if (task == null || task.status != ImportStatus.pending.name) {
+      return ImportItemResult.failure(
+        errorKind: ImportErrorKind.interrupted,
+        message: 'Import task cannot be resumed.',
+      );
+    }
+    return _run(taskId, _sourceFromTask(task));
+  }
+
+  @override
+  Future<ImportItemResult> resumeProcessing(String taskId) async {
+    final task = await _tasks.getById(taskId);
+    if (task == null || task.status != ImportStatus.processing.name) {
+      return ImportItemResult.failure(
+        errorKind: ImportErrorKind.interrupted,
+        message: 'Import task cannot be resumed.',
+      );
+    }
+    final temp = File(
+      _absolute(task.tempRelativePath ?? paths.importTempRelativePath(taskId)),
+    );
+    if (await temp.exists()) {
+      final length = await temp.length();
+      final expected = task.sourceSizeBytes >= 0
+          ? task.sourceSizeBytes
+          : task.tempSizeBytes;
+      if (expected == null || length != expected) {
+        await _deleteTaskTemp(temp);
+        return _fail(
+          taskId,
+          ImportErrorKind.interrupted,
+          'Interrupted import cannot continue.',
+        );
+      }
+      return _process(task, _sourceFromTask(task), temp, length);
+    }
+    if (task.videoId != null) {
+      final finalFile = File(
+        _absolute(
+          paths.videoRelativePath(
+            task.videoId!,
+            path.extension(task.displayName),
+          ),
+        ),
+      );
+      if (await finalFile.exists()) {
+        return _process(
+          task,
+          _sourceFromTask(task),
+          finalFile,
+          await finalFile.length(),
+          alreadyFinal: true,
+        );
+      }
+    }
+    return _fail(
       taskId,
-      ImportSource(
-        uri: task.sourceUri,
-        displayName: task.displayName,
-        sizeBytes: -1,
-        modifiedAt: task.updatedAt,
-      ),
+      ImportErrorKind.interrupted,
+      'Interrupted import cannot continue.',
     );
   }
 
@@ -124,14 +193,48 @@ final class ImportCoordinator {
         destination: tempFile,
         onProgress: (_) {},
       );
-      await _tasks.transition(taskId, ImportStatus.processing);
-      final digest = await _hashes.sha256File(tempFile);
+      final processingTask = await _tasks.transition(
+        taskId,
+        ImportStatus.processing,
+        tempSizeBytes: copy.copiedBytes,
+      );
+      return _process(processingTask, source, tempFile, copy.copiedBytes);
+    } on MediaInspectionException {
+      return _fail(
+        taskId,
+        ImportErrorKind.unsupportedMedia,
+        'This video format is unsupported or corrupt.',
+      );
+    } on SourceUnavailableException {
+      await _deleteTaskTemp(tempFile);
+      return _fail(
+        taskId,
+        ImportErrorKind.sourceUnavailable,
+        'The selected video is no longer available.',
+      );
+    } catch (_) {
+      await _deleteTaskTemp(tempFile);
+      return _fail(taskId, ImportErrorKind.io, 'Could not import this video.');
+    }
+  }
+
+  Future<ImportItemResult> _process(
+    ImportTask task,
+    ImportSource source,
+    File mediaFile,
+    int sizeBytes, {
+    bool alreadyFinal = false,
+  }) async {
+    final taskId = task.id;
+    File? thumbnailFile;
+    try {
+      final digest = await _hashes.sha256File(mediaFile);
       final existing = await _videos.findDuplicate(
-        sizeBytes: copy.copiedBytes,
+        sizeBytes: sizeBytes,
         sha256: digest,
       );
       if (existing != null) {
-        await _deleteTaskTemp(tempFile);
+        if (!alreadyFinal) await _deleteTaskTemp(mediaFile);
         await _tasks.transition(
           taskId,
           ImportStatus.completed,
@@ -144,27 +247,33 @@ final class ImportCoordinator {
         );
       }
 
-      final metadata = await _inspector.inspect(tempFile.path);
-      final videoId = const Uuid().v4();
+      final metadata = await _inspector.inspect(mediaFile.path);
+      final videoId = task.videoId ?? _videoIdGenerator();
+      if (task.videoId == null) {
+        await _tasks.checkpointProcessing(taskId, videoId: videoId);
+      }
       final extension = path.extension(source.displayName);
       final videoRelativePath = paths.videoRelativePath(videoId, extension);
       final thumbnailRelativePath = paths.thumbnailRelativePath(videoId);
-      final thumbnailFile = File(_absolute(thumbnailRelativePath));
+      thumbnailFile = File(_absolute(thumbnailRelativePath));
       String? storedThumbnailPath;
       try {
         final generated = await _thumbnails.generate(
-          videoAbsolutePath: tempFile.path,
+          videoAbsolutePath: mediaFile.path,
           outputAbsolutePath: thumbnailFile.path,
         );
         if (generated != null) storedThumbnailPath = thumbnailRelativePath;
       } catch (_) {
+        await _deleteIfExists(thumbnailFile);
         storedThumbnailPath = null;
       }
       final destination = File(_absolute(videoRelativePath));
-      await _files.commitTempFile(
-        temporaryFile: tempFile,
-        destination: destination,
-      );
+      if (!alreadyFinal) {
+        await _files.commitTempFile(
+          temporaryFile: mediaFile,
+          destination: destination,
+        );
+      }
       final importedAt = DateTime.now().toUtc();
       try {
         await _videos.insertImportedVideo(
@@ -173,7 +282,7 @@ final class ImportCoordinator {
             relativePath: videoRelativePath,
             originalFileName: source.displayName,
             sha256: digest,
-            sizeBytes: copy.copiedBytes,
+            sizeBytes: sizeBytes,
             recordedAt: resolveRecordedAt(
               metadataRecordedAt: metadata.metadataRecordedAt,
               mediaRecordedAt: source.mediaRecordedAt,
@@ -188,16 +297,16 @@ final class ImportCoordinator {
           ),
         );
       } catch (_) {
-        await _deleteIfExists(destination);
+        if (!alreadyFinal) await _deleteIfExists(destination);
         await _deleteIfExists(thumbnailFile);
-        await _deleteTaskTemp(tempFile);
+        if (!alreadyFinal) await _deleteTaskTemp(mediaFile);
         return _fail(
           taskId,
           ImportErrorKind.database,
           'Could not save the imported video.',
         );
       }
-      await _deleteTaskTemp(tempFile);
+      if (!alreadyFinal) await _deleteTaskTemp(mediaFile);
       await _tasks.transition(
         taskId,
         ImportStatus.completed,
@@ -206,16 +315,26 @@ final class ImportCoordinator {
       );
       return ImportItemResult.success(videoId: videoId);
     } on MediaInspectionException {
+      if (!alreadyFinal) await _deleteTaskTemp(mediaFile);
       return _fail(
         taskId,
         ImportErrorKind.unsupportedMedia,
         'This video format is unsupported or corrupt.',
       );
     } catch (_) {
-      await _deleteTaskTemp(tempFile);
+      if (thumbnailFile != null) await _deleteIfExists(thumbnailFile);
+      if (!alreadyFinal) await _deleteTaskTemp(mediaFile);
       return _fail(taskId, ImportErrorKind.io, 'Could not import this video.');
     }
   }
+
+  ImportSource _sourceFromTask(ImportTask task) => ImportSource(
+    uri: task.sourceUri,
+    displayName: task.displayName,
+    sizeBytes: task.sourceSizeBytes,
+    modifiedAt: task.sourceModifiedAt ?? task.createdAt,
+    mediaRecordedAt: task.mediaRecordedAt,
+  );
 
   Future<ImportItemResult> _fail(
     String taskId,

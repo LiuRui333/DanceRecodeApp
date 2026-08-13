@@ -2292,6 +2292,36 @@ class $ImportTasksTable extends ImportTasks
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _sourceSizeBytesMeta = const VerificationMeta(
+    'sourceSizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sourceSizeBytes = GeneratedColumn<int>(
+    'source_size_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(-1),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DateTime?, DateTime>
+  sourceModifiedAt = GeneratedColumn<DateTime>(
+    'source_modified_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  ).withConverter<DateTime?>($ImportTasksTable.$convertersourceModifiedAtn);
+  @override
+  late final GeneratedColumnWithTypeConverter<DateTime?, DateTime>
+  mediaRecordedAt = GeneratedColumn<DateTime>(
+    'media_recorded_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  ).withConverter<DateTime?>($ImportTasksTable.$convertermediaRecordedAtn);
   static const VerificationMeta _tempRelativePathMeta = const VerificationMeta(
     'tempRelativePath',
   );
@@ -2301,6 +2331,17 @@ class $ImportTasksTable extends ImportTasks
     aliasedName,
     true,
     type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tempSizeBytesMeta = const VerificationMeta(
+    'tempSizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> tempSizeBytes = GeneratedColumn<int>(
+    'temp_size_bytes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
@@ -2380,7 +2421,11 @@ class $ImportTasksTable extends ImportTasks
     id,
     sourceUri,
     displayName,
+    sourceSizeBytes,
+    sourceModifiedAt,
+    mediaRecordedAt,
     tempRelativePath,
+    tempSizeBytes,
     status,
     progress,
     errorKind,
@@ -2425,12 +2470,30 @@ class $ImportTasksTable extends ImportTasks
     } else if (isInserting) {
       context.missing(_displayNameMeta);
     }
+    if (data.containsKey('source_size_bytes')) {
+      context.handle(
+        _sourceSizeBytesMeta,
+        sourceSizeBytes.isAcceptableOrUnknown(
+          data['source_size_bytes']!,
+          _sourceSizeBytesMeta,
+        ),
+      );
+    }
     if (data.containsKey('temp_relative_path')) {
       context.handle(
         _tempRelativePathMeta,
         tempRelativePath.isAcceptableOrUnknown(
           data['temp_relative_path']!,
           _tempRelativePathMeta,
+        ),
+      );
+    }
+    if (data.containsKey('temp_size_bytes')) {
+      context.handle(
+        _tempSizeBytesMeta,
+        tempSizeBytes.isAcceptableOrUnknown(
+          data['temp_size_bytes']!,
+          _tempSizeBytesMeta,
         ),
       );
     }
@@ -2490,9 +2553,29 @@ class $ImportTasksTable extends ImportTasks
         DriftSqlType.string,
         data['${effectivePrefix}display_name'],
       )!,
+      sourceSizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}source_size_bytes'],
+      )!,
+      sourceModifiedAt: $ImportTasksTable.$convertersourceModifiedAtn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}source_modified_at'],
+        ),
+      ),
+      mediaRecordedAt: $ImportTasksTable.$convertermediaRecordedAtn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}media_recorded_at'],
+        ),
+      ),
       tempRelativePath: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}temp_relative_path'],
+      ),
+      tempSizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}temp_size_bytes'],
       ),
       status: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -2534,6 +2617,14 @@ class $ImportTasksTable extends ImportTasks
     return $ImportTasksTable(attachedDatabase, alias);
   }
 
+  static TypeConverter<DateTime, DateTime> $convertersourceModifiedAt =
+      const UtcDateTimeConverter();
+  static TypeConverter<DateTime?, DateTime?> $convertersourceModifiedAtn =
+      NullAwareTypeConverter.wrap($convertersourceModifiedAt);
+  static TypeConverter<DateTime, DateTime> $convertermediaRecordedAt =
+      const UtcDateTimeConverter();
+  static TypeConverter<DateTime?, DateTime?> $convertermediaRecordedAtn =
+      NullAwareTypeConverter.wrap($convertermediaRecordedAt);
   static TypeConverter<DateTime, DateTime> $convertercreatedAt =
       const UtcDateTimeConverter();
   static TypeConverter<DateTime, DateTime> $converterupdatedAt =
@@ -2544,7 +2635,11 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
   final String id;
   final String sourceUri;
   final String displayName;
+  final int sourceSizeBytes;
+  final DateTime? sourceModifiedAt;
+  final DateTime? mediaRecordedAt;
   final String? tempRelativePath;
+  final int? tempSizeBytes;
   final String status;
   final double progress;
   final String? errorKind;
@@ -2556,7 +2651,11 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
     required this.id,
     required this.sourceUri,
     required this.displayName,
+    required this.sourceSizeBytes,
+    this.sourceModifiedAt,
+    this.mediaRecordedAt,
     this.tempRelativePath,
+    this.tempSizeBytes,
     required this.status,
     required this.progress,
     this.errorKind,
@@ -2571,8 +2670,22 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
     map['id'] = Variable<String>(id);
     map['source_uri'] = Variable<String>(sourceUri);
     map['display_name'] = Variable<String>(displayName);
+    map['source_size_bytes'] = Variable<int>(sourceSizeBytes);
+    if (!nullToAbsent || sourceModifiedAt != null) {
+      map['source_modified_at'] = Variable<DateTime>(
+        $ImportTasksTable.$convertersourceModifiedAtn.toSql(sourceModifiedAt),
+      );
+    }
+    if (!nullToAbsent || mediaRecordedAt != null) {
+      map['media_recorded_at'] = Variable<DateTime>(
+        $ImportTasksTable.$convertermediaRecordedAtn.toSql(mediaRecordedAt),
+      );
+    }
     if (!nullToAbsent || tempRelativePath != null) {
       map['temp_relative_path'] = Variable<String>(tempRelativePath);
+    }
+    if (!nullToAbsent || tempSizeBytes != null) {
+      map['temp_size_bytes'] = Variable<int>(tempSizeBytes);
     }
     map['status'] = Variable<String>(status);
     map['progress'] = Variable<double>(progress);
@@ -2603,9 +2716,19 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
       id: Value(id),
       sourceUri: Value(sourceUri),
       displayName: Value(displayName),
+      sourceSizeBytes: Value(sourceSizeBytes),
+      sourceModifiedAt: sourceModifiedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceModifiedAt),
+      mediaRecordedAt: mediaRecordedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaRecordedAt),
       tempRelativePath: tempRelativePath == null && nullToAbsent
           ? const Value.absent()
           : Value(tempRelativePath),
+      tempSizeBytes: tempSizeBytes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tempSizeBytes),
       status: Value(status),
       progress: Value(progress),
       errorKind: errorKind == null && nullToAbsent
@@ -2631,7 +2754,13 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
       id: serializer.fromJson<String>(json['id']),
       sourceUri: serializer.fromJson<String>(json['sourceUri']),
       displayName: serializer.fromJson<String>(json['displayName']),
+      sourceSizeBytes: serializer.fromJson<int>(json['sourceSizeBytes']),
+      sourceModifiedAt: serializer.fromJson<DateTime?>(
+        json['sourceModifiedAt'],
+      ),
+      mediaRecordedAt: serializer.fromJson<DateTime?>(json['mediaRecordedAt']),
       tempRelativePath: serializer.fromJson<String?>(json['tempRelativePath']),
+      tempSizeBytes: serializer.fromJson<int?>(json['tempSizeBytes']),
       status: serializer.fromJson<String>(json['status']),
       progress: serializer.fromJson<double>(json['progress']),
       errorKind: serializer.fromJson<String?>(json['errorKind']),
@@ -2648,7 +2777,11 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
       'id': serializer.toJson<String>(id),
       'sourceUri': serializer.toJson<String>(sourceUri),
       'displayName': serializer.toJson<String>(displayName),
+      'sourceSizeBytes': serializer.toJson<int>(sourceSizeBytes),
+      'sourceModifiedAt': serializer.toJson<DateTime?>(sourceModifiedAt),
+      'mediaRecordedAt': serializer.toJson<DateTime?>(mediaRecordedAt),
       'tempRelativePath': serializer.toJson<String?>(tempRelativePath),
+      'tempSizeBytes': serializer.toJson<int?>(tempSizeBytes),
       'status': serializer.toJson<String>(status),
       'progress': serializer.toJson<double>(progress),
       'errorKind': serializer.toJson<String?>(errorKind),
@@ -2663,7 +2796,11 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
     String? id,
     String? sourceUri,
     String? displayName,
+    int? sourceSizeBytes,
+    Value<DateTime?> sourceModifiedAt = const Value.absent(),
+    Value<DateTime?> mediaRecordedAt = const Value.absent(),
     Value<String?> tempRelativePath = const Value.absent(),
+    Value<int?> tempSizeBytes = const Value.absent(),
     String? status,
     double? progress,
     Value<String?> errorKind = const Value.absent(),
@@ -2675,9 +2812,19 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
     id: id ?? this.id,
     sourceUri: sourceUri ?? this.sourceUri,
     displayName: displayName ?? this.displayName,
+    sourceSizeBytes: sourceSizeBytes ?? this.sourceSizeBytes,
+    sourceModifiedAt: sourceModifiedAt.present
+        ? sourceModifiedAt.value
+        : this.sourceModifiedAt,
+    mediaRecordedAt: mediaRecordedAt.present
+        ? mediaRecordedAt.value
+        : this.mediaRecordedAt,
     tempRelativePath: tempRelativePath.present
         ? tempRelativePath.value
         : this.tempRelativePath,
+    tempSizeBytes: tempSizeBytes.present
+        ? tempSizeBytes.value
+        : this.tempSizeBytes,
     status: status ?? this.status,
     progress: progress ?? this.progress,
     errorKind: errorKind.present ? errorKind.value : this.errorKind,
@@ -2693,9 +2840,21 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
       displayName: data.displayName.present
           ? data.displayName.value
           : this.displayName,
+      sourceSizeBytes: data.sourceSizeBytes.present
+          ? data.sourceSizeBytes.value
+          : this.sourceSizeBytes,
+      sourceModifiedAt: data.sourceModifiedAt.present
+          ? data.sourceModifiedAt.value
+          : this.sourceModifiedAt,
+      mediaRecordedAt: data.mediaRecordedAt.present
+          ? data.mediaRecordedAt.value
+          : this.mediaRecordedAt,
       tempRelativePath: data.tempRelativePath.present
           ? data.tempRelativePath.value
           : this.tempRelativePath,
+      tempSizeBytes: data.tempSizeBytes.present
+          ? data.tempSizeBytes.value
+          : this.tempSizeBytes,
       status: data.status.present ? data.status.value : this.status,
       progress: data.progress.present ? data.progress.value : this.progress,
       errorKind: data.errorKind.present ? data.errorKind.value : this.errorKind,
@@ -2714,7 +2873,11 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
           ..write('id: $id, ')
           ..write('sourceUri: $sourceUri, ')
           ..write('displayName: $displayName, ')
+          ..write('sourceSizeBytes: $sourceSizeBytes, ')
+          ..write('sourceModifiedAt: $sourceModifiedAt, ')
+          ..write('mediaRecordedAt: $mediaRecordedAt, ')
           ..write('tempRelativePath: $tempRelativePath, ')
+          ..write('tempSizeBytes: $tempSizeBytes, ')
           ..write('status: $status, ')
           ..write('progress: $progress, ')
           ..write('errorKind: $errorKind, ')
@@ -2731,7 +2894,11 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
     id,
     sourceUri,
     displayName,
+    sourceSizeBytes,
+    sourceModifiedAt,
+    mediaRecordedAt,
     tempRelativePath,
+    tempSizeBytes,
     status,
     progress,
     errorKind,
@@ -2747,7 +2914,11 @@ class ImportTask extends DataClass implements Insertable<ImportTask> {
           other.id == this.id &&
           other.sourceUri == this.sourceUri &&
           other.displayName == this.displayName &&
+          other.sourceSizeBytes == this.sourceSizeBytes &&
+          other.sourceModifiedAt == this.sourceModifiedAt &&
+          other.mediaRecordedAt == this.mediaRecordedAt &&
           other.tempRelativePath == this.tempRelativePath &&
+          other.tempSizeBytes == this.tempSizeBytes &&
           other.status == this.status &&
           other.progress == this.progress &&
           other.errorKind == this.errorKind &&
@@ -2761,7 +2932,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
   final Value<String> id;
   final Value<String> sourceUri;
   final Value<String> displayName;
+  final Value<int> sourceSizeBytes;
+  final Value<DateTime?> sourceModifiedAt;
+  final Value<DateTime?> mediaRecordedAt;
   final Value<String?> tempRelativePath;
+  final Value<int?> tempSizeBytes;
   final Value<String> status;
   final Value<double> progress;
   final Value<String?> errorKind;
@@ -2774,7 +2949,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
     this.id = const Value.absent(),
     this.sourceUri = const Value.absent(),
     this.displayName = const Value.absent(),
+    this.sourceSizeBytes = const Value.absent(),
+    this.sourceModifiedAt = const Value.absent(),
+    this.mediaRecordedAt = const Value.absent(),
     this.tempRelativePath = const Value.absent(),
+    this.tempSizeBytes = const Value.absent(),
     this.status = const Value.absent(),
     this.progress = const Value.absent(),
     this.errorKind = const Value.absent(),
@@ -2788,7 +2967,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
     required String id,
     required String sourceUri,
     required String displayName,
+    this.sourceSizeBytes = const Value.absent(),
+    this.sourceModifiedAt = const Value.absent(),
+    this.mediaRecordedAt = const Value.absent(),
     this.tempRelativePath = const Value.absent(),
+    this.tempSizeBytes = const Value.absent(),
     required String status,
     this.progress = const Value.absent(),
     this.errorKind = const Value.absent(),
@@ -2807,7 +2990,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
     Expression<String>? id,
     Expression<String>? sourceUri,
     Expression<String>? displayName,
+    Expression<int>? sourceSizeBytes,
+    Expression<DateTime>? sourceModifiedAt,
+    Expression<DateTime>? mediaRecordedAt,
     Expression<String>? tempRelativePath,
+    Expression<int>? tempSizeBytes,
     Expression<String>? status,
     Expression<double>? progress,
     Expression<String>? errorKind,
@@ -2821,7 +3008,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
       if (id != null) 'id': id,
       if (sourceUri != null) 'source_uri': sourceUri,
       if (displayName != null) 'display_name': displayName,
+      if (sourceSizeBytes != null) 'source_size_bytes': sourceSizeBytes,
+      if (sourceModifiedAt != null) 'source_modified_at': sourceModifiedAt,
+      if (mediaRecordedAt != null) 'media_recorded_at': mediaRecordedAt,
       if (tempRelativePath != null) 'temp_relative_path': tempRelativePath,
+      if (tempSizeBytes != null) 'temp_size_bytes': tempSizeBytes,
       if (status != null) 'status': status,
       if (progress != null) 'progress': progress,
       if (errorKind != null) 'error_kind': errorKind,
@@ -2837,7 +3028,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
     Value<String>? id,
     Value<String>? sourceUri,
     Value<String>? displayName,
+    Value<int>? sourceSizeBytes,
+    Value<DateTime?>? sourceModifiedAt,
+    Value<DateTime?>? mediaRecordedAt,
     Value<String?>? tempRelativePath,
+    Value<int?>? tempSizeBytes,
     Value<String>? status,
     Value<double>? progress,
     Value<String?>? errorKind,
@@ -2851,7 +3046,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
       id: id ?? this.id,
       sourceUri: sourceUri ?? this.sourceUri,
       displayName: displayName ?? this.displayName,
+      sourceSizeBytes: sourceSizeBytes ?? this.sourceSizeBytes,
+      sourceModifiedAt: sourceModifiedAt ?? this.sourceModifiedAt,
+      mediaRecordedAt: mediaRecordedAt ?? this.mediaRecordedAt,
       tempRelativePath: tempRelativePath ?? this.tempRelativePath,
+      tempSizeBytes: tempSizeBytes ?? this.tempSizeBytes,
       status: status ?? this.status,
       progress: progress ?? this.progress,
       errorKind: errorKind ?? this.errorKind,
@@ -2875,8 +3074,28 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
     if (displayName.present) {
       map['display_name'] = Variable<String>(displayName.value);
     }
+    if (sourceSizeBytes.present) {
+      map['source_size_bytes'] = Variable<int>(sourceSizeBytes.value);
+    }
+    if (sourceModifiedAt.present) {
+      map['source_modified_at'] = Variable<DateTime>(
+        $ImportTasksTable.$convertersourceModifiedAtn.toSql(
+          sourceModifiedAt.value,
+        ),
+      );
+    }
+    if (mediaRecordedAt.present) {
+      map['media_recorded_at'] = Variable<DateTime>(
+        $ImportTasksTable.$convertermediaRecordedAtn.toSql(
+          mediaRecordedAt.value,
+        ),
+      );
+    }
     if (tempRelativePath.present) {
       map['temp_relative_path'] = Variable<String>(tempRelativePath.value);
+    }
+    if (tempSizeBytes.present) {
+      map['temp_size_bytes'] = Variable<int>(tempSizeBytes.value);
     }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
@@ -2915,7 +3134,11 @@ class ImportTasksCompanion extends UpdateCompanion<ImportTask> {
           ..write('id: $id, ')
           ..write('sourceUri: $sourceUri, ')
           ..write('displayName: $displayName, ')
+          ..write('sourceSizeBytes: $sourceSizeBytes, ')
+          ..write('sourceModifiedAt: $sourceModifiedAt, ')
+          ..write('mediaRecordedAt: $mediaRecordedAt, ')
           ..write('tempRelativePath: $tempRelativePath, ')
+          ..write('tempSizeBytes: $tempSizeBytes, ')
           ..write('status: $status, ')
           ..write('progress: $progress, ')
           ..write('errorKind: $errorKind, ')
@@ -4516,7 +4739,11 @@ typedef $$ImportTasksTableCreateCompanionBuilder =
       required String id,
       required String sourceUri,
       required String displayName,
+      Value<int> sourceSizeBytes,
+      Value<DateTime?> sourceModifiedAt,
+      Value<DateTime?> mediaRecordedAt,
       Value<String?> tempRelativePath,
+      Value<int?> tempSizeBytes,
       required String status,
       Value<double> progress,
       Value<String?> errorKind,
@@ -4531,7 +4758,11 @@ typedef $$ImportTasksTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> sourceUri,
       Value<String> displayName,
+      Value<int> sourceSizeBytes,
+      Value<DateTime?> sourceModifiedAt,
+      Value<DateTime?> mediaRecordedAt,
       Value<String?> tempRelativePath,
+      Value<int?> tempSizeBytes,
       Value<String> status,
       Value<double> progress,
       Value<String?> errorKind,
@@ -4566,8 +4797,30 @@ class $$ImportTasksTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get sourceSizeBytes => $composableBuilder(
+    column: $table.sourceSizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DateTime?, DateTime, DateTime>
+  get sourceModifiedAt => $composableBuilder(
+    column: $table.sourceModifiedAt,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DateTime?, DateTime, DateTime>
+  get mediaRecordedAt => $composableBuilder(
+    column: $table.mediaRecordedAt,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   ColumnFilters<String> get tempRelativePath => $composableBuilder(
     column: $table.tempRelativePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get tempSizeBytes => $composableBuilder(
+    column: $table.tempSizeBytes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4633,8 +4886,28 @@ class $$ImportTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get sourceSizeBytes => $composableBuilder(
+    column: $table.sourceSizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get sourceModifiedAt => $composableBuilder(
+    column: $table.sourceModifiedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get mediaRecordedAt => $composableBuilder(
+    column: $table.mediaRecordedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get tempRelativePath => $composableBuilder(
     column: $table.tempRelativePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get tempSizeBytes => $composableBuilder(
+    column: $table.tempSizeBytes,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4694,8 +4967,30 @@ class $$ImportTasksTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get sourceSizeBytes => $composableBuilder(
+    column: $table.sourceSizeBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<DateTime?, DateTime> get sourceModifiedAt =>
+      $composableBuilder(
+        column: $table.sourceModifiedAt,
+        builder: (column) => column,
+      );
+
+  GeneratedColumnWithTypeConverter<DateTime?, DateTime> get mediaRecordedAt =>
+      $composableBuilder(
+        column: $table.mediaRecordedAt,
+        builder: (column) => column,
+      );
+
   GeneratedColumn<String> get tempRelativePath => $composableBuilder(
     column: $table.tempRelativePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get tempSizeBytes => $composableBuilder(
+    column: $table.tempSizeBytes,
     builder: (column) => column,
   );
 
@@ -4757,7 +5052,11 @@ class $$ImportTasksTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> sourceUri = const Value.absent(),
                 Value<String> displayName = const Value.absent(),
+                Value<int> sourceSizeBytes = const Value.absent(),
+                Value<DateTime?> sourceModifiedAt = const Value.absent(),
+                Value<DateTime?> mediaRecordedAt = const Value.absent(),
                 Value<String?> tempRelativePath = const Value.absent(),
+                Value<int?> tempSizeBytes = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<String?> errorKind = const Value.absent(),
@@ -4770,7 +5069,11 @@ class $$ImportTasksTableTableManager
                 id: id,
                 sourceUri: sourceUri,
                 displayName: displayName,
+                sourceSizeBytes: sourceSizeBytes,
+                sourceModifiedAt: sourceModifiedAt,
+                mediaRecordedAt: mediaRecordedAt,
                 tempRelativePath: tempRelativePath,
+                tempSizeBytes: tempSizeBytes,
                 status: status,
                 progress: progress,
                 errorKind: errorKind,
@@ -4785,7 +5088,11 @@ class $$ImportTasksTableTableManager
                 required String id,
                 required String sourceUri,
                 required String displayName,
+                Value<int> sourceSizeBytes = const Value.absent(),
+                Value<DateTime?> sourceModifiedAt = const Value.absent(),
+                Value<DateTime?> mediaRecordedAt = const Value.absent(),
                 Value<String?> tempRelativePath = const Value.absent(),
+                Value<int?> tempSizeBytes = const Value.absent(),
                 required String status,
                 Value<double> progress = const Value.absent(),
                 Value<String?> errorKind = const Value.absent(),
@@ -4798,7 +5105,11 @@ class $$ImportTasksTableTableManager
                 id: id,
                 sourceUri: sourceUri,
                 displayName: displayName,
+                sourceSizeBytes: sourceSizeBytes,
+                sourceModifiedAt: sourceModifiedAt,
+                mediaRecordedAt: mediaRecordedAt,
                 tempRelativePath: tempRelativePath,
+                tempSizeBytes: tempSizeBytes,
                 status: status,
                 progress: progress,
                 errorKind: errorKind,

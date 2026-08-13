@@ -70,8 +70,12 @@ final class ImportRecoveryService {
       }
       final temp = _tempFile(task.id);
       if (task.status == ImportStatus.pending.name) {
-        await runner.requeue(task.id);
-        requeued++;
+        final result = await runner.requeue(task.id);
+        if (result is ImportFailure) {
+          failed++;
+        } else {
+          requeued++;
+        }
       } else if (task.status == ImportStatus.copying.name) {
         if (await temp.exists()) await temp.parent.delete(recursive: true);
         await _tasks.transition(
@@ -80,11 +84,20 @@ final class ImportRecoveryService {
           errorKind: ImportErrorKind.interrupted,
           errorMessage: 'Interrupted import will be retried.',
         );
-        await runner.requeue(task.id);
-        requeued++;
-      } else if (await temp.exists() && await temp.length() > 0) {
-        await runner.resumeProcessing(task.id);
-        resumed++;
+        final result = await runner.requeue(task.id);
+        if (result is ImportFailure) {
+          failed++;
+        } else {
+          requeued++;
+        }
+      } else if ((await temp.exists() && await temp.length() > 0) ||
+          task.videoId != null) {
+        final result = await runner.resumeProcessing(task.id);
+        if (result is ImportFailure) {
+          failed++;
+        } else {
+          resumed++;
+        }
       } else {
         await _tasks.transition(
           task.id,
@@ -123,12 +136,15 @@ final class ImportRecoveryService {
           activeIds.contains(path.basename(entity.path))) {
         continue;
       }
-      var modified = DateTime.fromMillisecondsSinceEpoch(0);
+      DateTime? modified;
       await for (final child in entity.list(recursive: true)) {
         final childModified = await child.stat().then((stat) => stat.modified);
-        if (childModified.isAfter(modified)) modified = childModified;
+        if (modified == null || childModified.isAfter(modified)) {
+          modified = childModified;
+        }
       }
-      if (now().difference(modified) > const Duration(hours: 24)) {
+      modified ??= await entity.stat().then((stat) => stat.modified);
+      if (now().difference(modified!) > const Duration(hours: 24)) {
         await entity.delete(recursive: true);
         deleted++;
       }

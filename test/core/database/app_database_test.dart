@@ -1,5 +1,7 @@
+import 'dart:io';
+
 import 'package:dance_video_diary/core/database/app_database.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -180,8 +182,68 @@ void main() {
             'practice_videos_deleted_at_idx',
           }),
         );
-        expect(db.schemaVersion, 1);
+        expect(db.schemaVersion, 2);
       },
+    );
+  });
+
+  test('upgrades a real v1 database and defaults legacy import fields', () async {
+    final directory = await Directory.systemTemp.createTemp('database_v1_');
+    final file = File(
+      '${directory.path}${Platform.pathSeparator}legacy.sqlite',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final legacy = AppDatabase(NativeDatabase(file));
+    await legacy.customStatement('DROP TABLE import_tasks');
+    await legacy.customStatement('''
+      CREATE TABLE import_tasks (
+        id TEXT NOT NULL PRIMARY KEY,
+        source_uri TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        temp_relative_path TEXT,
+        status TEXT NOT NULL,
+        progress REAL NOT NULL DEFAULT 0,
+        error_kind TEXT,
+        error_message TEXT,
+        video_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await legacy.customStatement(
+      "INSERT INTO import_tasks (id, source_uri, display_name, status, created_at, updated_at) VALUES ('legacy', 'content://legacy', 'legacy.mp4', 'pending', 0, 0)",
+    );
+    await legacy.customStatement('PRAGMA user_version = 1');
+    await legacy.close();
+
+    final migrated = AppDatabase(NativeDatabase(file));
+    addTearDown(migrated.close);
+    final legacyTask = await (migrated.select(
+      migrated.importTasks,
+    )..where((row) => row.id.equals('legacy'))).getSingle();
+
+    expect(legacyTask.sourceSizeBytes, -1);
+    expect(legacyTask.sourceModifiedAt, isNull);
+    expect(legacyTask.mediaRecordedAt, isNull);
+    expect(legacyTask.tempSizeBytes, isNull);
+    await migrated
+        .into(migrated.importTasks)
+        .insert(
+          ImportTasksCompanion.insert(
+            id: 'new',
+            sourceUri: 'content://new',
+            displayName: 'new.mp4',
+            sourceSizeBytes: const Value(42),
+            sourceModifiedAt: Value(DateTime.utc(2026)),
+            tempSizeBytes: const Value(42),
+            status: 'processing',
+            createdAt: DateTime.utc(2026),
+            updatedAt: DateTime.utc(2026),
+          ),
+        );
+    expect(
+      (await migrated.select(migrated.importTasks).get()).last.sourceSizeBytes,
+      42,
     );
   });
 }

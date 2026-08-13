@@ -21,6 +21,9 @@ final class ImportTaskRepository {
       id: const Uuid().v4(),
       sourceUri: source.uri,
       displayName: source.displayName,
+      sourceSizeBytes: Value(source.sizeBytes),
+      sourceModifiedAt: Value(source.modifiedAt.toUtc()),
+      mediaRecordedAt: Value(source.mediaRecordedAt?.toUtc()),
       status: ImportStatus.pending.name,
       createdAt: now,
       updatedAt: now,
@@ -39,6 +42,7 @@ final class ImportTaskRepository {
     String? errorMessage,
     String? videoId,
     String? tempRelativePath,
+    int? tempSizeBytes,
   }) async {
     final current = await (_database.select(
       _database.importTasks,
@@ -77,6 +81,9 @@ final class ImportTaskRepository {
                 tempRelativePath: tempRelativePath == null
                     ? const Value.absent()
                     : Value(tempRelativePath),
+                tempSizeBytes: tempSizeBytes == null
+                    ? const Value.absent()
+                    : Value(tempSizeBytes),
                 updatedAt: Value(DateTime.now().toUtc()),
               ),
             );
@@ -98,6 +105,28 @@ final class ImportTaskRepository {
           ]),
         ))
         .get();
+  }
+
+  Future<ImportTask> checkpointProcessing(
+    String taskId, {
+    required String videoId,
+  }) async {
+    final changed =
+        await (_database.update(_database.importTasks)..where(
+              (row) =>
+                  row.id.equals(taskId) &
+                  row.status.equals(ImportStatus.processing.name),
+            ))
+            .write(
+              ImportTasksCompanion(
+                videoId: Value(videoId),
+                updatedAt: Value(DateTime.now().toUtc()),
+              ),
+            );
+    if (changed != 1) {
+      throw StateError('Import task is not processing: $taskId');
+    }
+    return getById(taskId).then((task) => task!);
   }
 
   bool _isLegalTransition(ImportStatus current, ImportStatus next) {

@@ -116,7 +116,13 @@ class ImportTasks extends Table {
   TextColumn get id => text()();
   TextColumn get sourceUri => text()();
   TextColumn get displayName => text()();
+  IntColumn get sourceSizeBytes => integer().withDefault(const Constant(-1))();
+  DateTimeColumn get sourceModifiedAt =>
+      dateTime().map(const UtcDateTimeConverter()).nullable()();
+  DateTimeColumn get mediaRecordedAt =>
+      dateTime().map(const UtcDateTimeConverter()).nullable()();
   TextColumn get tempRelativePath => text().nullable()();
+  IntColumn get tempSizeBytes => integer().nullable()();
   TextColumn get status => text()();
   RealColumn get progress => real().withDefault(const Constant(0))();
   TextColumn get errorKind => text().nullable()();
