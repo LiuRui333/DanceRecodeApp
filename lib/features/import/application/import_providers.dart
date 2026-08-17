@@ -30,11 +30,34 @@ abstract interface class ImportWorkflowBoundary {
 }
 
 typedef ImportWorkflowBoundaryFactory = ImportWorkflowBoundary Function();
+typedef ImportSupportDirectoryLoader = Future<Directory> Function();
+typedef ImportDatabaseFactory = AppDatabase Function(Directory supportRoot);
+
+/// Creates the real import workflow while allowing an isolated app-private
+/// support root in integration tests. The returned boundary owns and closes
+/// the database returned by [databaseFactory].
+ImportWorkflowBoundary createDefaultImportWorkflowBoundary({
+  required VideoPickerGateway picker,
+  ImportSupportDirectoryLoader? supportDirectoryLoader,
+  ImportDatabaseFactory? databaseFactory,
+}) => _DefaultImportWorkflowBoundary(
+  picker: picker,
+  supportDirectoryLoader:
+      supportDirectoryLoader ?? getApplicationSupportDirectory,
+  databaseFactory: databaseFactory ?? (_) => AppDatabase.defaults(),
+);
 
 final importWorkflowBoundaryFactoryProvider =
     Provider<ImportWorkflowBoundaryFactory>(
-      (ref) => _DefaultImportWorkflowBoundary.new,
+      (ref) =>
+          () => createDefaultImportWorkflowBoundary(
+            picker: ref.read(videoPickerGatewayProvider),
+          ),
     );
+
+final videoPickerGatewayProvider = Provider<VideoPickerGateway>(
+  (ref) => ImagePickerVideoPickerGateway(),
+);
 
 final importWorkflowBoundaryProvider = Provider<ImportWorkflowBoundary>((ref) {
   final boundary = ref.read(importWorkflowBoundaryFactoryProvider)();
@@ -124,12 +147,20 @@ final class ImportController extends AsyncNotifier<ImportProgress?> {
 }
 
 final class _DefaultImportWorkflowBoundary implements ImportWorkflowBoundary {
-  final VideoPickerGateway _picker = ImagePickerVideoPickerGateway();
+  _DefaultImportWorkflowBoundary({
+    required this.picker,
+    required this.supportDirectoryLoader,
+    required this.databaseFactory,
+  });
+
+  final VideoPickerGateway picker;
+  final ImportSupportDirectoryLoader supportDirectoryLoader;
+  final ImportDatabaseFactory databaseFactory;
   Future<_ImportServices>? _services;
   bool _closed = false;
 
   @override
-  Future<List<ImportSource>> pickVideos() => _picker.pickVideos();
+  Future<List<ImportSource>> pickVideos() => picker.pickVideos();
 
   @override
   Stream<ImportProgress> import(List<ImportSource> sources) async* {
@@ -178,8 +209,9 @@ final class _DefaultImportWorkflowBoundary implements ImportWorkflowBoundary {
   }
 
   Future<_ImportServices> _createServices() async {
-    final paths = AppMediaPaths(await getApplicationSupportDirectory());
-    final database = AppDatabase.defaults();
+    final supportRoot = await supportDirectoryLoader();
+    final paths = AppMediaPaths(supportRoot);
+    final database = databaseFactory(supportRoot);
     final tasks = ImportTaskRepository(database);
     final videos = VideoRepository(database);
     final mediaBridge = MethodChannelMediaBridge();
