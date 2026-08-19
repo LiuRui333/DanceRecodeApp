@@ -99,6 +99,53 @@ void main() {
     expect(summary.entries.single.taskId, task.id);
     expect(summary.entries.single.result, isA<ImportSuccess>());
   });
+
+  test('existing unsupported video remains failed after recovery', () async {
+    final root = await Directory.systemTemp.createTemp('recovery_unsupported_');
+    final paths = AppMediaPaths(root);
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await root.delete(recursive: true);
+    });
+    final tasks = ImportTaskRepository(db);
+    final videos = VideoRepository(db);
+    final task = await tasks.createPending(_source('broken.mp4'));
+    await tasks.transition(task.id, ImportStatus.copying);
+    await tasks.transition(
+      task.id,
+      ImportStatus.processing,
+      videoId: 'unsupported-video',
+      errorKind: ImportErrorKind.unsupportedMedia,
+      errorMessage: 'This video format is unsupported or corrupt.',
+    );
+    await videos.insertImportedVideo(_draft('unsupported-video'));
+    final runner = _Runner(failTaskId: '');
+
+    final summary = await ImportRecoveryService(
+      taskRepository: tasks,
+      videoRepository: videos,
+      paths: paths,
+      runner: runner,
+      now: DateTime.now,
+    ).recoverInterrupted();
+
+    expect(summary.completed, 0);
+    expect(summary.failed, 1);
+    expect(runner.resumed, isEmpty);
+    final recoveredTask = await tasks.getById(task.id);
+    expect(recoveredTask!.status, ImportStatus.failed.name);
+    expect(recoveredTask.errorKind, ImportErrorKind.unsupportedMedia.name);
+    expect(
+      summary.entries.single.result,
+      isA<ImportFailure>().having(
+        (result) => result.errorKind,
+        'errorKind',
+        ImportErrorKind.unsupportedMedia,
+      ),
+    );
+    expect(await db.select(db.practiceVideos).get(), hasLength(1));
+  });
   test(
     'applies every interrupted task rule and removes only old orphans',
     () async {

@@ -188,6 +188,41 @@ void main() {
     },
   );
 
+  test(
+    'persists the unsupported marker before inserting the video record',
+    () async {
+      final harness = await _Harness.create(inspector: _Inspector(fail: true));
+      addTearDown(harness.dispose);
+      await harness.db.customStatement('''
+        CREATE TRIGGER require_unsupported_marker
+        BEFORE INSERT ON practice_videos
+        WHEN NOT EXISTS (
+          SELECT 1 FROM import_tasks
+          WHERE status = 'processing'
+            AND error_kind = 'unsupportedMedia'
+        )
+        BEGIN
+          SELECT RAISE(ABORT, 'unsupported marker missing');
+        END
+      ''');
+
+      final progress = await harness.coordinator.import(<ImportSource>[
+        harness.source('broken.mp4', <int>[1]),
+      ]).toList();
+
+      expect(progress.last.failed, 1);
+      final result = progress.last.entries.single.result as ImportFailure;
+      expect(result.errorKind, ImportErrorKind.unsupportedMedia);
+      final task =
+          (await harness.db.select(harness.db.importTasks).get()).single;
+      expect(task.errorKind, ImportErrorKind.unsupportedMedia.name);
+      expect(
+        await harness.db.select(harness.db.practiceVideos).get(),
+        hasLength(1),
+      );
+    },
+  );
+
   test('retry moves a failed task back through the import states', () async {
     final harness = await _Harness.create();
     addTearDown(harness.dispose);

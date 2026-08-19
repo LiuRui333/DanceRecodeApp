@@ -110,6 +110,8 @@ final class ImportTaskRepository {
   Future<ImportTask> checkpointProcessing(
     String taskId, {
     required String videoId,
+    ImportErrorKind? errorKind,
+    String? errorMessage,
   }) async {
     final changed =
         await (_database.update(_database.importTasks)..where(
@@ -120,6 +122,12 @@ final class ImportTaskRepository {
             .write(
               ImportTasksCompanion(
                 videoId: Value(videoId),
+                errorKind: errorKind == null
+                    ? const Value.absent()
+                    : Value(errorKind.name),
+                errorMessage: errorMessage == null
+                    ? const Value.absent()
+                    : Value(errorMessage),
                 updatedAt: Value(DateTime.now().toUtc()),
               ),
             );

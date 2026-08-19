@@ -281,8 +281,15 @@ final class ImportCoordinator implements ImportRecoveryRunner {
         inspectionFailed = true;
       }
       final videoId = task.videoId ?? _videoIdGenerator();
-      if (task.videoId == null) {
-        await _tasks.checkpointProcessing(taskId, videoId: videoId);
+      if (task.videoId == null || inspectionFailed) {
+        await _tasks.checkpointProcessing(
+          taskId,
+          videoId: videoId,
+          errorKind: inspectionFailed ? ImportErrorKind.unsupportedMedia : null,
+          errorMessage: inspectionFailed
+              ? 'This video format is unsupported or corrupt.'
+              : null,
+        );
       }
       final extension = path.extension(source.displayName);
       final videoRelativePath = paths.videoRelativePath(videoId, extension);

@@ -56,6 +56,31 @@ final class ImportRecoveryService {
     for (final task in active) {
       if (task.videoId != null &&
           await _videos.findById(task.videoId!) != null) {
+        if (task.status == ImportStatus.processing.name &&
+            task.errorKind == ImportErrorKind.unsupportedMedia.name) {
+          final message =
+              task.errorMessage ??
+              'This video format is unsupported or corrupt.';
+          await _tasks.transition(
+            task.id,
+            ImportStatus.failed,
+            errorKind: ImportErrorKind.unsupportedMedia,
+            errorMessage: message,
+            videoId: task.videoId,
+          );
+          failed++;
+          entries.add(
+            ImportResultEntry(
+              taskId: task.id,
+              displayName: task.displayName,
+              result: ImportItemResult.failure(
+                errorKind: ImportErrorKind.unsupportedMedia,
+                message: message,
+              ),
+            ),
+          );
+          continue;
+        }
         if (task.status == ImportStatus.pending.name) {
           await _tasks.transition(task.id, ImportStatus.copying);
           await _tasks.transition(task.id, ImportStatus.processing);
