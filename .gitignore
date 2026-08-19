@@ -1,0 +1,17 @@
+.superpowers/
+.worktrees/
+
+# Flutter / Dart generated files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+build/
+**/build/
+.gradle/
+android/.kotlin/
+
+# IDE generated files
+.idea/
+*.iml
