@@ -28,7 +28,8 @@ void main() {
     expect(find.text('success.mp4'), findsOneWidget);
     expect(find.text('duplicate.mp4'), findsOneWidget);
     expect(find.text('failed.mp4'), findsOneWidget);
-    expect(find.text('2026-07-28'), findsOneWidget);
+    expect(_ResultBoundary.duplicateRecordedAt.toLocal().day, 1);
+    expect(find.text('2026-08-01'), findsOneWidget);
     expect(find.text('存储空间不足'), findsOneWidget);
 
     await tester.ensureVisible(find.text('打开记录'));
@@ -108,6 +109,8 @@ final class _ResultBoundary implements ImportWorkflowBoundary {
   _ResultBoundary({List<ImportResultEntry>? entries})
     : entries = entries ?? _defaultEntries;
 
+  static final duplicateRecordedAt = DateTime.utc(2026, 7, 31, 18, 30);
+
   static final _defaultEntries = <ImportResultEntry>[
     ImportResultEntry(
       taskId: 'task-success',
@@ -119,7 +122,7 @@ final class _ResultBoundary implements ImportWorkflowBoundary {
       displayName: 'duplicate.mp4',
       result: ImportItemResult.duplicate(
         videoId: 'existing-video',
-        recordedAt: DateTime.utc(2026, 7, 28),
+        recordedAt: duplicateRecordedAt,
       ),
     ),
     ImportResultEntry(

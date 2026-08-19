@@ -78,6 +78,17 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
 
+    expect(boundary.restoreCalls, 2);
+  });
+
+  testWidgets('cold start invokes the injected recovery boundary', (
+    tester,
+  ) async {
+    final boundary = _FakeBoundary(sources: const []);
+
+    await tester.pumpWidget(_app(boundary));
+    await tester.pump();
+
     expect(boundary.restoreCalls, 1);
   });
 
@@ -119,7 +130,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
 
-    expect(boundary.restoreCalls, 0);
+    expect(boundary.restoreCalls, 1);
   });
 
   testWidgets('restore in progress prevents starting a picker', (tester) async {

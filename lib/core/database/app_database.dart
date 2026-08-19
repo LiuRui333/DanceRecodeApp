@@ -14,18 +14,10 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.defaults() : this(driftDatabase(name: 'dance_diary'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 1;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onUpgrade: (migrator, from, to) async {
-      if (from < 2) {
-        await migrator.addColumn(importTasks, importTasks.sourceSizeBytes);
-        await migrator.addColumn(importTasks, importTasks.sourceModifiedAt);
-        await migrator.addColumn(importTasks, importTasks.mediaRecordedAt);
-        await migrator.addColumn(importTasks, importTasks.tempSizeBytes);
-      }
-    },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
     },

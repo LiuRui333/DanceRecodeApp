@@ -18,6 +18,11 @@ class _AppShellState extends ConsumerState<AppShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(importControllerProvider.notifier).restore();
+      }
+    });
   }
 
   @override

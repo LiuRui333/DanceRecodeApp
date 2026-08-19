@@ -13,6 +13,8 @@ final class CopyResult {
 final class FileGateway {
   FileGateway(this._paths);
 
+  static final Set<String> _activeCommitLocks = <String>{};
+
   final AppMediaPaths _paths;
 
   Future<CopyResult> copySourceToTemp({
@@ -61,14 +63,22 @@ final class FileGateway {
     final commitLock = await _videoFile(
       File('${resolvedDestination.path}.lock'),
     );
+    final lockPath = path.normalize(path.absolute(commitLock.path));
+    if (!_activeCommitLocks.add(lockPath)) {
+      throw StateError('Another commit is already in progress');
+    }
     var ownsLock = false;
 
     try {
+      final revalidatedLock = await _videoFile(commitLock);
+      if (await revalidatedLock.exists()) {
+        await revalidatedLock.delete();
+      }
       try {
-        await commitLock.create(exclusive: true);
+        await revalidatedLock.create(exclusive: true);
         ownsLock = true;
       } catch (_) {
-        if (await commitLock.exists()) {
+        if (await revalidatedLock.exists()) {
           throw StateError('Another commit is already in progress');
         }
         rethrow;
@@ -87,8 +97,12 @@ final class FileGateway {
       }
       await revalidatedTemporaryFile.rename(revalidatedDestination.path);
     } finally {
-      if (ownsLock) {
-        await _deleteCommitLock(commitLock);
+      try {
+        if (ownsLock) {
+          await _deleteCommitLock(commitLock);
+        }
+      } finally {
+        _activeCommitLocks.remove(lockPath);
       }
     }
   }

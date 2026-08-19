@@ -156,6 +156,23 @@ void main() {
       expect(await destination.readAsBytes(), <int>[1, 2, 3]);
     });
 
+    test('reclaims a stale commit lock left by a crashed process', () async {
+      final temporaryFile = _tempFile(paths, 'task-1');
+      await temporaryFile.parent.create(recursive: true);
+      await temporaryFile.writeAsBytes(const <int>[1, 2, 3]);
+      final destination = _videoFile(paths, 'video-1');
+      final staleLock = File('${destination.path}.lock');
+      await staleLock.writeAsString('stale');
+
+      await gateway.commitTempFile(
+        temporaryFile: temporaryFile,
+        destination: destination,
+      );
+
+      expect(await destination.readAsBytes(), <int>[1, 2, 3]);
+      expect(await staleLock.exists(), isFalse);
+    });
+
     test('does not overwrite an existing video during commit', () async {
       final temporaryFile = _tempFile(paths, 'task-1');
       await temporaryFile.parent.create(recursive: true);

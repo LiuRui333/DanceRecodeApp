@@ -18,6 +18,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
+import 'import_flow_support.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -126,24 +128,29 @@ Future<ImportProgress> _runPickerImport(
   Directory supportRoot,
 ) async {
   final container = _container(picker, supportRoot);
-  await tester.pumpWidget(
-    UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: AppShell()),
-    ),
+  return runWithCleanup(
+    body: () async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: AppShell()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('导入视频'), findsOneWidget);
+      await tester.tap(find.text('导入视频'));
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        const Duration(minutes: 1),
+      );
+      final progress = container.read(importControllerProvider).value;
+      expect(progress?.status, ImportStatus.completed);
+      expect(find.text('成功'), findsOneWidget);
+      return progress!;
+    },
+    cleanup: () => _closeContainer(tester, container),
   );
-  expect(find.text('导入视频'), findsOneWidget);
-  await tester.tap(find.text('导入视频'));
-  await tester.pumpAndSettle(
-    const Duration(milliseconds: 100),
-    EnginePhase.sendSemanticsUpdate,
-    const Duration(minutes: 1),
-  );
-  final progress = container.read(importControllerProvider).value;
-  expect(progress?.status, ImportStatus.completed);
-  expect(find.text('成功'), findsOneWidget);
-  await _closeContainer(tester, container);
-  return progress!;
 }
 
 Future<ImportProgress> _runRecovery(
@@ -152,22 +159,25 @@ Future<ImportProgress> _runRecovery(
   Directory supportRoot,
 ) async {
   final container = _container(picker, supportRoot);
-  await tester.pumpWidget(
-    UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: AppShell()),
-    ),
+  return runWithCleanup(
+    body: () async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: AppShell()),
+        ),
+      );
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        const Duration(minutes: 1),
+      );
+      final progress = container.read(importControllerProvider).value;
+      expect(progress?.status, ImportStatus.completed);
+      return progress!;
+    },
+    cleanup: () => _closeContainer(tester, container),
   );
-  await container.read(importControllerProvider.notifier).restore();
-  await tester.pumpAndSettle(
-    const Duration(milliseconds: 100),
-    EnginePhase.sendSemanticsUpdate,
-    const Duration(minutes: 1),
-  );
-  final progress = container.read(importControllerProvider).value;
-  expect(progress?.status, ImportStatus.completed);
-  await _closeContainer(tester, container);
-  return progress!;
 }
 
 ProviderContainer _container(

@@ -126,24 +126,67 @@ void main() {
     expect(video.thumbnailPath, isNull);
   });
 
-  test('maps corrupt media to unsupportedMedia without exposing paths', () async {
-    final harness = await _Harness.create(inspector: _Inspector(fail: true));
-    addTearDown(harness.dispose);
+  test(
+    'keeps a safely copied corrupt video while reporting unsupportedMedia',
+    () async {
+      final harness = await _Harness.create(inspector: _Inspector(fail: true));
+      addTearDown(harness.dispose);
 
-    await harness.coordinator.import(<ImportSource>[
-      harness.source('broken.mp4', <int>[1]),
-    ]).drain<void>();
+      await harness.coordinator.import(<ImportSource>[
+        harness.source('broken.mp4', <int>[1]),
+      ]).drain<void>();
 
-    final task = (await harness.db.select(harness.db.importTasks).get()).single;
-    expect(task.errorKind, ImportErrorKind.unsupportedMedia.name);
-    expect(task.errorMessage, isNot(contains(harness.root.path)));
-    expect(
-      await Directory(
-        '${harness.paths.importsTempDirectory.path}${Platform.pathSeparator}${task.id}',
-      ).exists(),
-      isFalse,
-    );
-  });
+      final task =
+          (await harness.db.select(harness.db.importTasks).get()).single;
+      expect(task.errorKind, ImportErrorKind.unsupportedMedia.name);
+      expect(task.errorMessage, isNot(contains(harness.root.path)));
+      expect(task.status, ImportStatus.failed.name);
+      expect(task.videoId, isNotNull);
+      final video =
+          (await harness.db.select(harness.db.practiceVideos).get()).single;
+      expect(video.id, task.videoId);
+      expect(video.durationMs, isNull);
+      expect(video.width, isNull);
+      expect(video.height, isNull);
+      expect(video.metadataRecordedAt, isNull);
+      expect(video.thumbnailPath, isNull);
+      expect(
+        await File(
+          '${harness.root.path}${Platform.pathSeparator}${video.relativePath.replaceAll('/', Platform.pathSeparator)}',
+        ).readAsBytes(),
+        <int>[1],
+      );
+      expect(await harness.paths.thumbnailsDirectory.list().toList(), isEmpty);
+      expect(
+        await Directory(
+          '${harness.paths.importsTempDirectory.path}${Platform.pathSeparator}${task.id}',
+        ).exists(),
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'retrying a retained unsupported video resolves as a duplicate',
+    () async {
+      final inspector = _Inspector(fail: true);
+      final harness = await _Harness.create(inspector: inspector);
+      addTearDown(harness.dispose);
+      final source = harness.source('broken.mp4', <int>[1]);
+      await harness.coordinator.import(<ImportSource>[source]).drain<void>();
+      final task =
+          (await harness.db.select(harness.db.importTasks).get()).single;
+
+      final result = await harness.coordinator.retry(task.id);
+
+      expect(result, isA<ImportDuplicate>());
+      expect(
+        await harness.db.select(harness.db.practiceVideos).get(),
+        hasLength(1),
+      );
+      expect(inspector.calls, 1);
+    },
+  );
 
   test('retry moves a failed task back through the import states', () async {
     final harness = await _Harness.create();
@@ -291,29 +334,34 @@ void main() {
     );
   });
 
-  test('database failure removes committed media and task temp', () async {
-    final harness = await _Harness.create();
-    addTearDown(harness.dispose);
-    await harness.db.customStatement(
-      'CREATE TRIGGER reject_video BEFORE INSERT ON practice_videos BEGIN SELECT RAISE(ABORT, \'reject\'); END',
-    );
+  test(
+    'database failure after unsupported inspection removes committed media and task temp',
+    () async {
+      final harness = await _Harness.create(inspector: _Inspector(fail: true));
+      addTearDown(harness.dispose);
+      await harness.db.customStatement(
+        'CREATE TRIGGER reject_video BEFORE INSERT ON practice_videos BEGIN SELECT RAISE(ABORT, \'reject\'); END',
+      );
 
-    await harness.coordinator.import(<ImportSource>[
-      harness.source('dance.mp4', <int>[1]),
-    ]).drain<void>();
+      await harness.coordinator.import(<ImportSource>[
+        harness.source('dance.mp4', <int>[1]),
+      ]).drain<void>();
 
-    final task = (await harness.db.select(harness.db.importTasks).get()).single;
-    expect(task.errorKind, ImportErrorKind.database.name);
-    expect(await harness.paths.videosDirectory.list().toList(), isEmpty);
-    expect(
-      await Directory(
-        harness.paths.importsTempDirectory.path +
-            Platform.pathSeparator +
-            task.id,
-      ).exists(),
-      isFalse,
-    );
-  });
+      final task =
+          (await harness.db.select(harness.db.importTasks).get()).single;
+      expect(task.errorKind, ImportErrorKind.database.name);
+      expect(await harness.db.select(harness.db.practiceVideos).get(), isEmpty);
+      expect(await harness.paths.videosDirectory.list().toList(), isEmpty);
+      expect(
+        await Directory(
+          harness.paths.importsTempDirectory.path +
+              Platform.pathSeparator +
+              task.id,
+        ).exists(),
+        isFalse,
+      );
+    },
+  );
 
   test(
     'resumeProcessing continues from complete temp without opening source',

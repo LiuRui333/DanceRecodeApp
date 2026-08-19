@@ -82,7 +82,7 @@ final class ImagePickerVideoPickerGateway implements VideoPickerGateway {
           (file) => ImportSource(
             uri: file.path,
             displayName: file.name,
-            sizeBytes: file.sizeBytes ?? 0,
+            sizeBytes: file.sizeBytes ?? -1,
             mediaRecordedAt: file.mediaRecordedAt?.toUtc(),
             modifiedAt: file.modifiedAt?.toUtc() ?? fallbackTime,
           ),

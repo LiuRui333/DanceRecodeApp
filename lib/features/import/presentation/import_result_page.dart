@@ -58,10 +58,12 @@ class ImportResultPage extends StatelessWidget {
     child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
   );
 
-  String _date(DateTime value) =>
-      '${value.year.toString().padLeft(4, '0')}-'
-      '${value.month.toString().padLeft(2, '0')}-'
-      '${value.day.toString().padLeft(2, '0')}';
+  String _date(DateTime value) {
+    final local = value.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')}';
+  }
 }
 
 String localizedImportError(ImportErrorKind kind) => switch (kind) {

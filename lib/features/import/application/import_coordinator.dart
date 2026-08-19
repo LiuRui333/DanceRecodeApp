@@ -273,7 +273,13 @@ final class ImportCoordinator implements ImportRecoveryRunner {
         );
       }
 
-      final metadata = await _inspector.inspect(mediaFile.path);
+      MediaMetadata? metadata;
+      var inspectionFailed = false;
+      try {
+        metadata = await _inspector.inspect(mediaFile.path);
+      } on MediaInspectionException {
+        inspectionFailed = true;
+      }
       final videoId = task.videoId ?? _videoIdGenerator();
       if (task.videoId == null) {
         await _tasks.checkpointProcessing(taskId, videoId: videoId);
@@ -283,19 +289,21 @@ final class ImportCoordinator implements ImportRecoveryRunner {
       final thumbnailRelativePath = paths.thumbnailRelativePath(videoId);
       thumbnailFile = File(_absolute(thumbnailRelativePath));
       String? storedThumbnailPath;
-      try {
-        final generated = await _thumbnails.generate(
-          videoAbsolutePath: mediaFile.path,
-          outputAbsolutePath: thumbnailFile.path,
-        );
-        if (generated != null) {
-          storedThumbnailPath = thumbnailRelativePath;
-        } else {
+      if (!inspectionFailed) {
+        try {
+          final generated = await _thumbnails.generate(
+            videoAbsolutePath: mediaFile.path,
+            outputAbsolutePath: thumbnailFile.path,
+          );
+          if (generated != null) {
+            storedThumbnailPath = thumbnailRelativePath;
+          } else {
+            await _deleteIfExists(thumbnailFile);
+          }
+        } catch (_) {
           await _deleteIfExists(thumbnailFile);
+          storedThumbnailPath = null;
         }
-      } catch (_) {
-        await _deleteIfExists(thumbnailFile);
-        storedThumbnailPath = null;
       }
       final destination = File(_absolute(videoRelativePath));
       if (!alreadyFinal) {
@@ -314,16 +322,16 @@ final class ImportCoordinator implements ImportRecoveryRunner {
             sha256: digest,
             sizeBytes: sizeBytes,
             recordedAt: resolveRecordedAt(
-              metadataRecordedAt: metadata.metadataRecordedAt,
+              metadataRecordedAt: metadata?.metadataRecordedAt,
               mediaRecordedAt: source.mediaRecordedAt,
               importedAt: importedAt,
             ),
-            metadataRecordedAt: metadata.metadataRecordedAt,
+            metadataRecordedAt: metadata?.metadataRecordedAt,
             importedAt: importedAt,
             thumbnailPath: storedThumbnailPath,
-            durationMs: metadata.durationMs,
-            width: metadata.width,
-            height: metadata.height,
+            durationMs: metadata?.durationMs,
+            width: metadata?.width,
+            height: metadata?.height,
           ),
         );
       } catch (_) {
@@ -338,6 +346,13 @@ final class ImportCoordinator implements ImportRecoveryRunner {
         );
       }
       if (!alreadyFinal) await _deleteTaskTemp(mediaFile);
+      if (inspectionFailed) {
+        return _fail(
+          taskId,
+          ImportErrorKind.unsupportedMedia,
+          'This video format is unsupported or corrupt.',
+        );
+      }
       await _tasks.transition(
         taskId,
         ImportStatus.completed,

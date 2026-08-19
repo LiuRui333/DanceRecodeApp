@@ -126,7 +126,7 @@ void main() {
     expect(sources.first.sizeBytes, 8192);
     expect(sources.first.mediaRecordedAt, DateTime.utc(2026, 7, 31, 12, 15));
     expect(sources.first.modifiedAt, importTime);
-    expect(sources.last.sizeBytes, 0);
+    expect(sources.last.sizeBytes, -1);
     expect(sources.last.modifiedAt, importTime);
   });
 
